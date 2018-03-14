@@ -1,0 +1,470 @@
+\documentclass[a4paper]{article}
+
+%% Language and font encodings
+\usepackage[english]{babel}
+\usepackage[utf8x]{inputenc}
+\usepackage[T1]{fontenc}
+
+%% Sets page size and margins
+\usepackage[a4paper,top=3cm,bottom=2cm,left=3cm,right=3cm,marginparwidth=1.75cm]{geometry}
+
+%% Useful packages
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+
+\title{Research Paper Notes}
+\author{You}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Your abstract.
+\end{abstract}
+
+\section{Blockchain}
+
+\subsection{Tezos — a self-amending crypto-ledger White paper}
+
+Proposes a new cryptocurrency where users can vote to change the blockchain policy at any point.
+
+\begin{itemize}
+\item A blockchain protocol can be broken down into 3 distinct protocols
+\begin{itemize}
+\item Network protocol: discovers blocks and broadcasts transactions
+\item Transaction protocol: determines what makes transactions valid
+\item Consensus protocol: forms consensus around a unique chain
+\end{itemize}
+
+\item A blockchain protocol is fundamentally a monadic implementation of concurrent mutations of a global state. This is achieved by defining “blocks” as operators (functions) acting on this global state. The free monoid of blocks acting on the genesis state forms a tree structure (set of all possible block combinations). A global, canonical, state is defined as the minimal leaf for a specified ordering.
+
+\item Let $(S, \leq)$ be a totally ordered, countable set of possible states. Note: a totally ordered set is a set $X$ along with a binary relation $\leq$ such that
+
+\begin{itemize}
+\item Reflexive: $a \leq a$ for all $a \in X$
+\item Antisymmetric: If $a \leq b$ and $b \leq a$ then $a = b$ for all $a,b \in X$
+\item Transitive: If $a \leq b$ and $b \leq c$ then $a \leq c$ for all $a,b,c \in X$
+\item Totality: $a \leq b$ or $b \leq a$ for all $a, b \in X$
+\end{itemize}
+
+Totally ordered sets form a category and can be understood as partially ordered sets with additional structure
+
+\item Let $\emptyset \notin S$ be a special, invalid state
+
+\item Let $B \subset S^{S \cup \{\emptyset\}}$ be the set of blocks (note that $S^{S \cup \emptyset}$ is the set of functions with domain $S \cup \emptyset$ and range $S$). The set of valid blocks in $B \cap S^S$
+
+\item We extend the total order on $S$ with $\forall s \in S, \emptyset < s$. I believe this means $\emptyset$ is the bottom of $S$. This order determines which leaf in the block tree is the canonical one
+
+\item Any blockchain protocol can be identified by $(S, \leq, \emptyset, B \subset S^{S \cup \{\emptyset\}})$
+
+\item In Tezos blocks can not only act on the global state but also the protocol itself. The set of all possible protocols is defined recursively as $\mathcal{P}=\{(S, \leq, \emptyset, B \subset S^{(S \times \mathcal{P}) \cup \{\emptyset\}})\}$. The last element of the tuple is the formalisation that blocks can act on both state and the protocol itself.
+
+\item The network shell
+\begin{itemize}
+\item knows how to build the block tree
+\item Knows of 3 types of objects: transactions, blocks, and protocols. In Tezos, protocols are OCaml modules used to amend the existing protocol.
+\item the hardest part of the newtwork layer is to protect the user against DOS attacks
+\end{itemize}
+
+\item Clocks
+\begin{itemize}
+\item Every block has a timestamp
+\item Blocks with timestamps a reasonably amount of time in the future can be buffered, others are rejected
+\item Must be able to deal with falsified timestamps and user clock drift
+\end{itemize}
+
+\item Chain Representation
+\begin{itemize}
+\item A raw block header contains: a hash to the previous block, a bytestring consisting of the block header (where transactions in this block are), a list of operations, and a timestamp in floating point notation.
+\item State (or Context) is represented by an immutable, disk-based key-value store. Blocking on disk operations is avoided using asynchronous operations
+\item A protocol is defined by several operations:
+\begin{itemize}
+\item Parsing operations to translate block headers and operations from byestrings into ADTs.
+\item An apply operation which takes a state, a parsed block header, and a parsed list of operations, and returns the next state. This is the monadic abstraction talked about in the beginning of the paper: A blockchain protocol is a monadic implementation of concurrent mutations of a global state.
+\item a score function that projects a State onto a list of bytes so that States can be compared (first by length then by lexicographic order). This comparison function is the total order ($\leq$) on the set of states described in the intro of the paper (ties are broken based on the hash of the last block). Converting State into a bytestring also allows us to states across different protocols.
+\end{itemize}
+
+\item Ammending the Protocol
+\begin{itemize}
+\item Two protocols: one for testing and the current protocol
+\item Can swap out either protocol with a stakeholder vote
+\item When a protocol is swapped out, the global State changes, and the new protocol takes effect when the next block is applied to the State.
+\item A protocol is an OCaml module that is compiled on the fly and run inside a sandbox (no system calls can be made)
+\item the protocol is used by the $apply$ function when computing a new $State$.
+\item Many rules can be voted in to amend or change the protocol
+\end{itemize}
+
+\item Protocols expose an RPC mechanism so that GUIs can be made
+\end{itemize}
+
+\item Seed Protocol
+\begin{itemize}
+\item Tezos starts with a seed protocol
+\item There is a finite amount of coin in the system
+\item Relies on a combination of bonds and rewards to incentivize miners to secure the blockchain
+\item Bonds are one year security deposits that are purchased by miners and forfeited if they break the rules
+\item After a year, miners and endorsers receive a reward for their service as well as their security deposit back
+\item Inactive addresses are not selected to propose blocks or vote for blocks in the consensus algorithm
+\item Protocol amendments are proposed and voted over a period of time every 3 months. A quorum is needed for an amendment to pass.
+\item During the first quarter of voting, participants propose the hash of a a tarball of an OCaml module representing the new protocol. Active users can choose to "approve" any number of the proposed protocols
+\item During the second quarter, the amendment receiving the most approval from the first quarter is subject to a vote. Voters can vote yes, no, or abstain (which counts towards the quorum).
+\item During the third quarter, if quorum was met and the amendment received a threshold of yes votes, then the protocol is adopted into the test network and the minimum quorum for future votes is adjusted based on the number of participants
+\item During the fourth quarter, users vote again to promote the test protocol to replace the active protocol
+
+\item Proof of Stake
+\begin{itemize}
+\item Blocks are mined by stakeholders and signed by signers. Mining and signing provide rewards to users but require a short term safety deposit that is forfeited in the event of malicious activity.
+\item Groups of coins are grouped into coin rolls. Coin rolls are assigned priorities for signing the next block
+\item Any stakeholder can sign a block. However, each stakeholder is subject to a random delay of how long they must wait before they can propose a block. This delay is determined by the priority assigned to any coin rolls they own (as I understand it)
+\item Additionally 16 signers are chosen for each block. A blockchains weight is not its length but how many signatures it has.
+\item Signers are incentived to sign quickly the best priority block it knows about in order to receive a reward
+
+\end{itemize}
+
+\item Smart Contracts
+\begin{itemize}
+\item Tezos uses stateful accounts
+\item An account is simply a contract that has no executable code
+\item contracts incur storage fees since they are stored in the blockchain (I guess?)
+\item Contract code is only allowd to execute for a certain amount of "steps". Multiple contracts can be used to build larger programs. The threshold can of course be changed with a protocol amendment
+\end{itemize}
+\end{itemize}
+
+\end{itemize}
+
+\subsection{Secure High-Rate Transaction Processing in Bitcoin}
+proposes the "Greediest Heaviest Observed Subtree" (GHOST) protocol extension to scale transaction confirmation for bitcoin to be able to handle a high enough transaction rate to meet global economic demands
+
+\begin{itemize}
+\item Nakamoto's original paper on bitcoin assumed that blocks could be transmitted through the overlay network much faster than they are created. The more transactions, the more frequently blocks must be created or the larger the block size must be and the longer it will take for new blocks to propagate throughout the network.
+
+\item If the amount of transactions confirmed per second by the network does not rise, then transaction fees will raise and drive people to use other payment systems
+
+\item In Nakamoto's original paper when multiple valid blocks are mined, a fork occurs and is not resolved until some chain of the fork becomes longer than the others. In the case of ties, a node simply adopts the block it learned of first as the main chain
+
+\item The GHOST rule is an alternative rule for conflict resolution when forks occur. At each fork in the chain the heaviest subtree rooted at the fork is selected.
+
+\item Ethereum is using a variant of the GHOST protocol
+
+\item At a higher transaction confirmation rate, miners that are better connected may enjoy more rewards than there share of the hashing compute power in the network. Also selfish mining may become a viable strategy for weaker miners. To combat this, GHOST has an extension described in a different paper
+
+\item Double spend attacks occur when a user pays a merchant some fee and then cafts a set of blocks (longer than the current honest main chain) without that transaction (or directing that transaction elsewhere) in order to replace the main chain. However this is not computationally feasible unless the attacker has more computational power than the entire honest network combined.
+
+\item Model
+\begin{itemize}
+\item Let $V$ be the set of nodes in the bitcoin network and $E$ be the set of of edges connecting nodes. The network can then be modeled as a directed graph $G = (V, E)$.
+
+\item Every node $v \in V$ has some fraction of the computational power of the network $p_v \ge 0$ such that the total computational power in the network can be defined as $\sum_{v\in V}p_v = 1$.
+
+\item \textbf{Aside on Poisson Processes:} A Poisson process is a type of counting process that tries to model the occurrence of random events over time (the arrival of customers at a store or the number of earthquakes that will happen in a city). $\lambda$ is called the rate or intensity of the process and represents the rate at which the random event will happen per unit time.
+
+\item The entire network creates blocks following a Poisson process with rate $\lambda$ with each node generating blocks individually following a Poisson process with rate $p_v \lambda$. The value of $\lambda = \frac{1}{600}$ (which I think is supposed to be 1 block per 600 seconds = 10 minutes) was chosen by Nakamoto in his original paper.
+
+\item The time it takes to send a block across an edge $e \in E$ is denoted as $d_e$.
+
+\item The block creation rate of the honest network is $\lambda_h = \lambda$. The attackers creation rate is denoted as $q\lambda_h > 0$ for some $0 < q < 1$. Furthermore, it is assumed that attackers build chains efficiently (meaning that an attackers' chain has minimal forks because it is able to coordinate its mining nodes to reach consensus near instantly when it creates a new block)
+
+\item $time(B)$ is the absolute creation time for a block $B$. The structure of the tree at time $t$ is denoted by $tree(t)$ and by $subroot(B)$ - the subtree rooted at $B$. Furthermore $depth(B)$ denotes the depth of a block $B$ in the block tree.
+
+\item The function $s()$ is defined to be the choice function that selects which block a new block should build off of. Formally, it maps a block tree $T = (V_T, E_T)$ onto a block $B \in V_T$. It should be noted that it is possible for different nodes to have different views of the block tree because of network propagation delays when announcing new blocks.
+
+\item The Bitcoin protocol originally defined $s()$ as selecting the block with the largest depth in the block tree. As such, $longest(t)$ defines the deepest leaf block in $tree(t)$ at time $t$.
+
+\item The "main chain" is defined to be the path from the genesis block to the block that $s()$ selects to be the next block to build off of (originally in Bitcoin this was $longest(t)$). The time it takes for the main chain grows from length $n-1$ to $n$ is a random variable defined as $\tau_n$. The rate of block addition to the main chain is defined as $\beta = \frac{1}{E[\tau]}$ where $\tau = lim_{n\rightarrow\infty}\frac{1}{n}\sum_{i=1}^n\tau_n$. I think this is essentially saying that the rate the main chain grows is defined in terms of the expected value of the infinite series of random variable main chain growth times. It should be noted that $\lambda$ denotes the rate at which blocks are added (not necessarily to the main chain) to the block tree.
+
+\item The maximum block size in kilobytes is represented as $b$, and it is assumed that newly created blocks are always the maximal size
+
+\item The primary measure of Bitcoin scale is defined to be Transactions Per Second (TPS) the system adds to the main chain and is defined to be $TPS(\lambda, b) = \beta(\lambda, b) \times b \times K$ where $K$ is the average number of transactions per $KB$. Since $\beta$ measures block creation over time, $b$ measures kilobytes, and $K$ measures transactions transactions per kilobytes, we get the transactions per seconds.
+\end{itemize}
+
+\item The amount of throughput in the network determines how susceptible Bitcoin is to double-spend attacks. If an attackers compute power is is greater than the main chain block addition rate ($p\lambda_h > \beta$), then the attacker's chain will always win out in the end eventually. Conversely if $q < \frac{\beta}{\lambda_h}$, then the probability of the attacker winning decreases exponentially as the main chain grows in length. Therefore $\frac{\beta}{\lambda_h}$ is defined to be the security threshold of the system.
+
+\item Transaction throughput is controlled mostly by block creation rate ($\lambda$) and block size ($b$).
+
+\item Some naive attempts to increase throughput pose increased security risk to Bitcoin:
+\begin{itemize}
+\item \textbf{Larger Blocks:} Increased block size cause more forks because of longer block propagation delays in the system. Propagation time has been shown to grow linearly with block size
+
+\item \textbf{Accelerated Block Creation:} If blocks are created faster by the honest network (larger $\lambda_h$), then there is a loss of efficiency because nodes will be more likely to contribute to an outdated fork as opposed to the main branch (some nodes will not be fully synced on the most up to date state of the tree). Conversely attackers will also have increased block creation ($b\lambda_h$) but will not experience any of the same efficiency loss because of the assumptions that attackers have full, efficient control over their resources.
+\end{itemize}
+
+\item The main issue here seems to be that trying to scale transaction throughput using the longest chain rule leads to more forks because nodes cannot reach consensus as quickly because of increased block propagation delays. As a result this becomes an attack vector bad actors can exploit with secret mining.
+
+\item Greediest Heaviest Observed Subtree (GHOST):
+\begin{itemize}
+\item GHOST allows for cryptocurrency protocol designers to set high block creation rates and block sizes.
+
+\item Originally, the main chain in the Bitcoin protocol is chosen to be the longest chain. At a high level, GHOST changes the weight of a chain so that it takes into account blocks that "hang" off the main chain but are not a part of the main chain (essentially forks that hang off the main chain contribute to the weight of the main chain).
+
+\item Formally, GHOST redefines the parent selection function ($s()$). For a block $B$ in a tree $T$, let $subtree(B)$ be a subtree of $T$ rooted at $B$ and let $Children_T(B)$ be the set of blocks directly referencing $B$ as their parent block. Defined $GHOST(T)$ to be a parent selection function that follows this algorithm with input block tree $T$:
+\begin{enumerate}
+\item $current\_node := Genesis Block$
+\item if $Children_T(current\_node) = \emptyset$ then $return(current\_node)$
+\item else $current\_node := node from Children_T(current\_node) whose subtree is the largest size$
+\item goto step 2
+\end{enumerate}
+It should be noted that the size of a subtree is directly correlated with the hardest combined proof-of-work
+\end{itemize}
+\item Properties of GHOST:
+\begin{itemize}
+\item Every block is either fully abandoned or fully adopted into the main chain
+
+\item The probability that a block is initially on the main chain and then becomes off the main chain ($50\%$ attack) can be made arbitrarily small given a sufficiently long waiting time $\tau$ after the blocks' creation. This means the security threshold ($\frac{\beta}{\lambda_h}$) can be made to equal $1$, meaning that the attackers' block creation rate must equal that of the honest network.
+
+\item The rate of growth of the main chain ($\beta$) using GHOST is slightly slower than using the longest chain rule. However unlike the longest chain rule, this slowdown in growth does not effect the security of the GHOST rule.
+
+\item The authors attempt to measure the efficiency of the GHOST rule and provide a framework for protocol designers to set security parameters (e.g. block creation rate) using simulations of overlay networks since the entire network for a cryptocurrency protocol cannot be known beforehand. I mostly skimmed this section, but its interesting to note in case I would ever need to do something similar
+\end{itemize}
+
+\item Although the security threshold ($\frac{\beta}{\lambda_h}$) of GHOST is always $1$, if the throughput of the grows limitlessly then bandwidth becomes an efficiency bottleneck
+
+\item Their simulations show that the GHOST rule and longest chain rule both can scale TPS at approximately the same rate as block creation increases (however longest chain suffers from decreased security threshold while GHOST remains at $1$)
+
+\item The acceptance policy (time a merchant is willing to wait before considering a transaction as confirmed) can be modeled as a function $n(t, r, q)$ where $r$ is the risk the vendor is willing to take and $q$ is the upper bound on the attackers' compute power and $t$ is the time elapsed since the transaction was broadcast to the network. Vendors wait until $n \ge n(t, r, q)$ blocks have piled up on the transaction block before considering the transaction as being confirmed.
+
+\item blocks using GHOST get confirmations from all other blocks in its subtree. 
+
+\item Changes in the implementation of GHOST:
+\begin{itemize}
+\item Only send the headers of off-main-chain blocks since all nodes must know of these blocks.
+
+\item Deployment of GHOST rule can be gradual since it is mostly compatible with the longest chain rule at low block creation rates
+
+\item Only award coins for mining to block creators that mine blocks that end up on the main chain. Block creators that create blocks that end up in the same subroot should not be awarded coins
+
+\item To avoid attackers adding blocks to off-main-chain branches long in the past (where the difficulty target might be lower), it is suggested to using a checkpointing system that prevents addition of new blocks prior to some block in the tree
+\end{itemize}
+
+\item A final note: I don't believe that at this time Bitcoin uses the GHOST protocol. Ethereum uses a modified rule which awards coins to block creators that contributed to blocks that hang off the main chain. Also there seems to be some criticism stating the GHOST would centralize mining because well connected nodes benefit or something or other, I dunno it kinda seemed like the jury was out plus these were just comments on reddit and y combinator so who knows if the commenters actually knew what they were talking about
+\end{itemize}
+
+\section{Facebook}
+
+\subsection{SVE: Distributed Video Processing at Facebook Scale}
+
+Describes the evolution and architecture of Streaming Video Engine (SVE) which handles video uploads at Facebook scale.
+
+\begin{itemize}
+\item 3 key requirements of video processing at Facebook scale: low-latency, flexible API for application developers, and fault tolerance and resiliency. 
+
+\item The video encoding engine validates uploaded videos and re-encodes the video into many bitrates and file formats in order to support a wide array of clients and stream video at the best quality based on network conditions.
+
+\item Facebook orginally had a system dubbed Monolithic Encoding Script (MES) for uploading and processing videos, but it did not scale well.
+
+\item SVE adds parallelism in 3 ways that MES did not: it parallelizes video validation and processing, it chunks videos into smaller pieces and parallelizes processing of the chunks over a compute cluster, and it parallelizes video processing with video storage + replication.
+
+\item SVE's programming model has developers writing tasks that work on a stream-of-tracks abstraction that forms a Directed Acyclic Graph (DAG). The stream-of-tracks abstraction breaks a video down into streams (video, audio, metadata, etc.), and the DAG model allows tasks to be easily composed and parallelized.
+
+\item 6 steps in the full video pipeline: record, upload, process, store, share, stream.
+
+\item Users upload video to Facebook's front end server which then forwards it to SVE for processing.
+
+\item The video is then validated which includes repairing the video (syncing audio + frames or fixing metadata) and validation (blocking malware and DOS attacks).
+
+\item The video is next re-encoded which is the most computationally demanding step.
+
+\item Once encoded, the video is stored in the Binary Large Object (BLOB) storage system (seems to be Facebook's in-house datastore).
+
+\item When streaming, video clients download video chunks at the best bitrate it can sustain from Facebook's CDN.
+
+\item This paper focuses on the pre-sharing + streaming phase of the video pipeline.
+
+\item Monolithic Encoding Script:
+\begin{itemize}
+\item Had a simple architecture: Client uploads a file to the front end server as a single opaque binary blob. Once upload is completed, the front end server forwards the file directly to storage where it is picked up be a processing server which runs through the processing tasks sequentially with one encoding server handling a single video and then restored.
+
+\item Worked but was not very flexible when adding new tasks or video applications. Hard to add monitoring
+
+\item Not very reliable and crumbled when experiencing overload.
+\end{itemize}
+
+\item Existing batch processing frameworks such as MapReduce, Dryad, and Spark all assume that the data to be processed already exists (has been uploaded). This incurs high latency
+
+\item Existing stream processing framework such as Storm, Spark Streaming, and Streamscope allow for overlapping of upload and processing but are designed to process continuous queries as opposed to discrete events.
+
+\item Steaming Video Engine Overview
+\begin{itemize}
+\item Each server type is replicated many times, but only one server from each type handles a video.
+
+\item 4 fundamental changes from MES architecture:
+
+\begin{enumerate}
+\item The uploading client tries to break the video up into segments (called group of pictures or GOP) to upload. Each GOP is processed and encoded independently. This segmenting allows processing to happen earlier since the front end server doesn't need to wait for the entire video to be uploaded to start forwarding it to the processing servers
+
+\item The front end server forwards video chunks to a preprocessor server instead of directly to storage
+
+\item The MES server has been replaced with the preprocessor, scheduler, and workers of SVE.
+
+\item SVE exposes pipeline
+construction in a DAG interface that allows application developers
+to quickly iterate on the pipeline logic while providing
+advanced options for performance tunings
+\end{enumerate}
+
+\item The Preprocessor does lightweight processing (which includes validation and breaking the video up into GOP segments if an old upload client does not support this), initiates heavyweight processing, and acts as a write-through cache since it writes video segments to main memory as well as passing them off to persistent storage for redundancy. Writing the segments to storage is done concurrently with heavyweight processing, so having the Preprocessor cache video segments helps move the Storage (and its slow use of disk) off of the critical path.
+
+\item Video encoding is heavyweight since it operates at the pixel level and is done on a bunch of worker machines which are orchestrated by the Scheduler. The tasks to be run are determined by the DAG of tasks for the application that the video is being processed for.
+
+\item The Scheduler receives the DAG job from the Preprocessor as well as notifications for when video segments have been preprocessed and are available. The scheduler pushes tasks to a cluster of workers. Each cluster has a high and low priority queue of remaining tasks they can pull from. The priority of a task is set by the application programmer. Workers will always pull from the high priority queue over the low priority queue. SVE shards video encoding by video ID. This means that a DAG job might be handled by many Schedulers during the course of its runtime due to capacity and load balancing demands; however, at any given time a DAG job is being processed only by a single Scheduler. 
+
+\item Workers process tasks in the DAG job for a video in parallel. They receive tasks from the Scheduler, pull the input data to complete the task either from the Preprocessor's memory cache or from Intermediate Storage, and then write the task output either to Intermediate Storage (for further processing) or to persistent Storage.
+
+\item Intermediate Storage is used in a variety of ways. The type of storage being used depends on the type of data being written. Application metadata is stored in a multi-tiered storage system that durably stores the data and makes it available through an in-memory cache because it is read much more frequently than written. The in-memory processing context of SVE is written to durable storage without caching since it is written many times and read only once. Video and audio data are written to a BLOB store and automatically freed after a few days. Facebook prefers having the storage layer automatically let the data expire before freeing it because they believe this leads to a simpler, more correct design.
+\end{itemize}
+
+\item Uploads are normally bottlenecked by the speed + upload bandwidth of the client. The solutions to speed this up is to either upload less data or parallelize uploading with encoding/processing. Another option is to process the video client side, this is done in SVE when the video is large and will effect pre-sharing latency and the client has the right specs to do this. Client-side processing of the video comes with tradeoffs because you're using the resources of the clinet (battery)
+
+\item Segment size of video chunks when uploading is a tradeoff between compression and parallelization across segments. A larger segment size provides for better compression, and a smaller segment size provides for better parallelism
+
+\item Syncing the video to durable storage can incur a significant amount of latency for some videos. SVE decreases latency by overlapping processing video segments with storing them. SVE also caches some segments in memory so that load times are quicker. For more on this design read the paper \textbf{Rethink the Sync}
+
+\item DAG Execution System
+\begin{itemize}
+\item Programmers write sequential programs that act as tasks (vertices) in the DAG job. Edges of the graph represent dataflow and dependency.
+
+\item A stream-of-tracks abstraction is used to specify the granularity at which tasks run. A task can run on one or more tracks (such as video or audio tracks) or it can run for all segments within a track.
+
+\item Each DAG job is dynamically generate per-video by the Preprocessor. It probes the video and runs DAG generation code based on its findings (bitrate, etc.)
+
+\item Once the DAG is created, the Preprocessor forwards it to the Scheduler which is in charge of dispatching tasks among workers and monitoring the progress of tasks and the job. The Preprocessor will alert the Scheduler when new video segments are available for processing.
+
+\item Tasks can be organized into "task-grouops" which are collections of tasks that will all be run on one worker. Each task is by default in their own task-group. task-groups allow application developers to amortize scheduling overhead. Tasks can also be marked as "latency-sensitive" which means a user is waiting for the task to finish. All parent tasks of a latency-sensitive task are also marked as latency-sensitive. 
+
+\end{itemize}
+
+\item Fault Tolerance
+\begin{itemize}
+\item Workers that detect task failures (exception or failure exit code) will retry the task a few times and then propagate the failure to the Scheduler which will also retry scheduling the task among different workers. If the task continues to fail after retry, the task is marked as failed and the DAG job will fail if the task was critical.
+
+\item User client's devices will anticipate intermittent uploads
+
+\item The fron-end server will replicate state externally
+
+\item The Preprocessor will replicate state externally
+
+\item The Scheduler will synchronously replicate state externally
+
+\item The Worker will replicate in time
+
+\item Tasks will retry
+
+\item The Storage will replicate over multiple disks
+
+\end{itemize}
+
+
+\item Overload
+\begin{itemize}
+\item Organic overload occurs when some event causes video upload and processing demand to spike beyond normal weekly spikes. New Years Eve is a good example.
+
+\item Facebook's loadtesting framework purposefully overloads SVE to make sure that overload diagnostics are working as intended
+
+\item Overload can also be induced by bugs in SVE (i.e. a memory leak causes the pipeline to slow or stall)
+
+\item SVE first reacts to overload by delaying the scheduling of latency-insensitive tasks
+
+\item SVE will then react to overload by shifting load to another regional SVE (this is done manually be an engineer)
+
+\item Finally SVE if the other measures do not mitigate overload, SVE will delay processing of newly uploaded videos until older videos have finished processing.
+\end{itemize}
+
+
+\end{itemize}
+
+\section{Scalability}
+
+\subsection{Harvest, Yield, and Scalable Tolerant Systems}
+
+Defines Brewer's CAP Theorem.
+
+\section {Paper Backlog}
+
+\begin{itemize}
+\item \textbf{Post-quantum RSA} by Daniel J. Bernstein, Nadia Heninger, Paul Lou, and Luke Valenta
+
+\item \textbf{A Fistful of Bitcoins: Characterizing Payments Among Men with No Names} Sarah Meiklejohn, Marjori Pomarole, Grant Jordan, Kirill Levchenko, Damon McCoy, Geoffrey M. Voelker, Stefan Savage
+\end{itemize}
+
+
+% \section{Introduction}
+
+% Your introduction goes here! Some examples of commonly used commands and features are listed below, to help you get started. If you have a question, please use the help menu (``?'') on the top bar to search for help or ask us a question. 
+
+% \section{Some examples to get started}
+
+% \subsection{How to include Figures}
+
+% First you have to upload the image file from your computer using the upload link the project menu. Then use the includegraphics command to include it in your document. Use the figure environment and the caption command to add a number and a caption to your figure. See the code for Figure \ref{fig:frog} in this section for an example.
+
+% \begin{figure}
+% \centering
+% \includegraphics[width=0.3\textwidth]{frog.jpg}
+% \caption{\label{fig:frog}This frog was uploaded via the project menu.}
+% \end{figure}
+
+% \subsection{How to add Comments}
+
+% Comments can be added to your project by clicking on the comment icon in the toolbar above. % * <john.hammersley@gmail.com> 2016-07-03T09:54:16.211Z:
+% %
+% % Here's an example comment!
+% %
+% To reply to a comment, simply click the reply button in the lower right corner of the comment, and you can close them when you're done.
+
+% Comments can also be added to the margins of the compiled PDF using the todo command\todo{Here's a comment in the margin!}, as shown in the example on the right. You can also add inline comments:
+
+% \todo[inline, color=green!40]{This is an inline comment.}
+
+% \subsection{How to add Tables}
+
+% Use the table and tabular commands for basic tables --- see Table~\ref{tab:widgets}, for example. 
+
+% \begin{table}
+% \centering
+% \begin{tabular}{l|r}
+% Item & Quantity \\\hline
+% Widgets & 42 \\
+% Gadgets & 13
+% \end{tabular}
+% \caption{\label{tab:widgets}An example table.}
+% \end{table}
+
+% \subsection{How to write Mathematics}
+
+% \LaTeX{} is great at typesetting mathematics. Let $X_1, X_2, \ldots, X_n$ be a sequence of independent and identically distributed random variables with $\text{E}[X_i] = \mu$ and $\text{Var}[X_i] = \sigma^2 < \infty$, and let
+% \[S_n = \frac{X_1 + X_2 + \cdots + X_n}{n}
+%       = \frac{1}{n}\sum_{i}^{n} X_i\]
+% denote their mean. Then as $n$ approaches infinity, the random variables $\sqrt{n}(S_n - \mu)$ converge in distribution to a normal $\mathcal{N}(0, \sigma^2)$.
+
+
+% \subsection{How to create Sections and Subsections}
+
+% Use section and subsections to organize your document. Simply use the section and subsection buttons in the toolbar to create them, and we'll handle all the formatting and numbering automatically.
+
+% \subsection{How to add Lists}
+
+% You can make lists with automatic numbering \dots
+
+% \begin{enumerate}
+% \item Like this,
+% \item and like this.
+% \end{enumerate}
+% \dots or bullet points \dots
+% \begin{itemize}
+% \item Like this,
+% \item and like this.
+% \end{itemize}
+
+% \subsection{How to add Citations and a References List}
+
+% You can upload a \verb|.bib| file containing your BibTeX entries, created with JabRef; or import your \href{https://www.overleaf.com/blog/184}{Mendeley}, CiteULike or Zotero library as a \verb|.bib| file. You can then cite entries from it, like this: \cite{greenwade93}. Just remember to specify a bibliography style, as well as the filename of the \verb|.bib|.
+
+% You can find a \href{https://www.overleaf.com/help/97-how-to-include-a-bibliography-using-bibtex}{video tutorial here} to learn more about BibTeX.
+
+% We hope you find Overleaf useful, and please let us know if you have any feedback using the help menu above --- or use the contact form at \url{https://www.overleaf.com/contact}!
+
+% \bibliographystyle{alpha}
+% \bibliography{sample}
+
+\end{document}
