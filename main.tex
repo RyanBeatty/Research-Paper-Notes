@@ -124,6 +124,44 @@ Your abstract.
 \item The preference list contains distinct nodes. When building the preference list, virtual nodes that belong to nodes that are already in the list are skipped. 
 \end{itemize}
 
+\item Data Versioning
+\begin{itemize}
+\item Dynamo allows write to propagate asynchronously, providing eventual consistency
+
+\item Dynamo treats an updated object as a new, immutable version of the object and allows for multiple versions of an object to be present within the system.
+
+\item Newer versions of an object normally subsume older versions; however, this might not be the case in the presence  of failures and concurrent updates. In this case where version branching occurs, the application must do conflict resolution on a subsequent read to collapse these versioned branches
+
+\item Dynamo uses vector clocks in order to determine which versions of an object "happened before" other versions. A vector clock is a list of (node, counter) pairs and each version of an object has its own vector clock. If all of the counters in a vector clock are less than or equal to all of the counters in vector clock of a second version, then the first is an ancestor of the second and can be forgotten, else the two versions are in conflict
+
+\item Updating an item in Dynamo is done by passing it a context (which contains the vector clock info) which was obtained by an earlier read operation. If a read request for an object detects that there are multiple versions of the object in conflict, Dynamo will return all of the objects and put all of the vector clock information for each version in the context returned. A subsequent write with this context is assumed by Dynamo to have reconciled all of the different versions, so it will collapse the multiple versions
+
+\item Theoretically the size of the vector clock could grow to a large size if many nodes are coordinating writes for an object. In practice, this shouldn't happen since only the $N$ nodes in the preference list should be handling writes for the object; however, network partitions might make this not be the case
+
+\item Dynamo truncates the vector clock to a fixed size. It adds to each (node, count) pair a timestamp of when the node last serviced the object. If the clock is full it evicts the entry with the oldest timestamp. This can lead to situations where causal dependency between object versions cannot be accurately reconstructed, but Amazon has neither encountered or explored this
+\end{itemize}
+
+\item Execution of get() and put() without failures
+\begin{itemize}
+\item Operations are invoked over HTTP
+
+\item Clients can either send requests through a load balancer to route to a node or link in a partition-aware library that routes requests directly to the right coordinator node
+
+\item A loadbalancer might send a request to a node that is not in the $N$ number of nodes for the keys preference list. This node will then send the request to the first node in the preference list for the key
+
+\item Read and write operations use the first $N$ healthy nodes in the preference list for a key, skipping unhealthy nodes. When there are node failures, lower ranked nodes (those not in the first $N$ nodes of the preference list) will be employed
+
+\item Dynamo has two configurable values ($R$ and $W$) which it will use in its quorum-like consistency algorithm to maintain consistency between replicas for a key. $R$ and $W$ are the minimum number of nodes that must participate in a successful read or write operation respectively. Setting $R + W > N$ yields a quorum-like model. However, since the latency of a ready (or write) operation is dominated by the slowest of the $R$ (or $W$), replicas, $R$ and $W$ are configured to be much smaller than $N$
+
+\item For a put() request, the coordinator generates the new vector clock and version and stores the version locally. It then sends both to the $N$ highest reachable nodes and waits for at least $W-1$ successful responses before returning success.
+
+\item For a get() request, the coordinator requests all existing versions of data for a key from the $N$ highest reachable nodes and then waits for $R$ (not $R-1$ I guess?) responses before returning success. If the coordinator gets multiple versions for the object, it returns all of the ones it deems causally unrelated (needing to be resolved)
+\end{itemize}
+
+\item Handling Failures: Hinted Handoff
+\begin{itemize}
+
+\end{itemize}
 
 \end{itemize}
 \end{itemize}
