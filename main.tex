@@ -24,6 +24,110 @@
 Your abstract.
 \end{abstract}
 
+\section{Amazon}
+
+\subsection{Dynamo: Amazon's Highly Available Key-value Store}
+
+\begin{itemize}
+\item System Assumptions and Requirements
+\begin{itemize}
+\item Query Model: items are binary blobs that are uniquely identified by a primary key. No complex operations. No relational schema
+
+\item  ACID properties: data stores with ACID guarantees provide poor availability when scaling. Dynamo is good for applications with a looser consistency requirement. No isolation guarantees, so only single key updates
+
+\item Dynamo is assumed to be run in a non-hostile environment at Amazon, so there are no security requirements. 
+\end{itemize}
+
+\item Design Considerations
+\begin{itemize}
+\item Synchronous replication of data will give strong consistency, but poor availability in the presence of certain failures
+
+\item Availability can be increased for systems prone to network or server failures by using eventually consistent replication techniques. Writes are propagated to replicas asynchronously and in the background. Conflicting updates must be resolved. When to resolve updates and who resolves them?
+
+\item Update conflicts are resolved during reads so that Dynamo can be an "always writeable" store. This is in contrast to traditional data stores which handle resolution during writes in order to keep reads simple (this can lead to writes being rejected if they cannot reach or are not accepted by the replicas).
+
+\item Either the data store or the application can be the entity that resolves write conflicts. Application developers have better knowledge of the schema and might be able to perform better resolutions. Having the data store resolve conflicts simplifies the application logic. A typical conflict resolution strategy at the data store level is "last write wins".
+
+\item Dynamo should be incrementally scalable
+
+\item Dynamo instances should be symmetric/homogeneous (i.e. no distinguished nodes with extra responsibilities)
+
+\item Dynamo should be decentralized and use peer-to-peer techniques over centralized control. Amazon believes decentralization results in higher availability
+
+\item Dynamo should be able to run on heterogeneous hardware so that portions of a Dynamo cluster can be vertically scaled without having to scale all the nodes at once.
+\end{itemize}
+
+\item What Dynamo is built for
+\begin{enumerate}
+\item Targets applications that need an "always writeable" data store with no rejected updates.
+
+\item Built for a network where all nodes are trusted
+
+\item Targets applications that do not need hierarchical namespaces or relational schema
+
+\item Built for latency sensitive applications. Multi hop routing for Distributed Hash Tables (e.g. Chord) incurs more latency and variability in terms of SLA. Dyanmo is a zero-hop DHT 
+\end{enumerate}
+
+\item System Architecture
+\begin{itemize}
+\item Techniques used by Dynamo
+\begin{itemize}
+\item Consistent Hashing solves the problem of Partitioning with the advantage of Incremental Scalability
+
+\item Vector clocks with reconciliation during reads are used to allow for high availability of writes with the bonus that Version size is decoupled from update rates
+
+\item Sloppy Quorum and hinted handoffs solves handling temporary failures with the bonus of providing high availability and durability guarantees when some of the replicas are not available
+
+\item Anti-entropy using Merkle Trees solves recovering from permanent failures with the bonus of synchronizing divergent replicas in the background
+
+\item Gossip based membership protocol and failure detection solves membership and failure detection with the bonus of keeping membership information decentralized
+\end{itemize}
+
+\item System Interface
+\begin{itemize}
+\item Exposes two operations $get()$ and $put()$
+
+\item $get(key)$ returns the object associated with $key$ or a list of objects with conflicting versions along with a $context$.
+
+\item $put(key, context, object)$ stores the replicas of $object$ based on $key$ and writes the replicas to disk. 
+
+\item $context$ encodes system metadata (such as the version of the object) about the object that is hidden from the caller. The $context$ is stored along with the $object$ in order for the system to do validation.
+
+\item Both the $object$ and $key$ are treated as an array of bytes. Dynamo computes an MD5 hash of the $key$ to get a 128-bit identifier to determine the storage nodes responsible for serving the $key$. 
+\end{itemize}
+
+\item Partitioning Algorithm
+\begin{itemize}
+\item In order to scale incrementally, Dynamo needs a way to dynamically partition the data over the set of nodes in the system. Therefore, Dynamo relies on consistent hashing to distribute load across multiple Dynamo instances.
+
+\item Consistent hashing works by treating the output of the hash function as a fixed circular array or ring (the largest hash value wraps around to the smallest hash value). Each node in the system is assigned a random position in the ring. The keys assigned to a node are all of the keys that lie between its position in the ring and its predecessor's position. The main advantage of consistent hashing is that departure or arrival of nodes in the system only effects the immediate neighbours of the node in the ring.
+
+\item Basic consistent hashing algorithms can lead to non uniform data and load distribution since each node is assigned a random spot in the ring. Also it doesn't take into account the heterogeneous hardware that each node is running on.
+
+\item Dynamo uses a modified consistent hashing algorithm where each node in the system gets mapped to multiple positions in the key space. Nodes can be responsible for many of these "virtual nodes" (single positions in the key space). When a new node joins the system it is assigned many multiple positions in the key space (also called "tokens").
+
+\item Virtual nodes allow even load shedding across the rest of the nodes in the system if a single node leaves. When a node joins the system, it takes on roughly the same amount of load from each node. The number of virtual nodes a host is responsible for can be tuned to the amount of capacity the host has based on the hardware it is running on
+\end{itemize}
+
+\item Replication
+\begin{itemize}
+\item Dynamo provides high availability and durability by replicating data across multiple nodes.
+
+\item Each node stores all keys that fall within its range locally and replicates them across the next $N-1$ successor nodes (where $N$ is configurable per node) so that all data is replicated across $N$ nodes. This implies that each node is responsible for storing keys in the range of itself and its $Nth$ predecessor.
+
+\item The $preference list$ contains the nodes which are responsible for storing a particular key.
+
+\item Each node contains enough information so that it can determine the preference list for any key
+
+\item The preference list has more than $N$ nodes to account for failure
+
+\item The preference list contains distinct nodes. When building the preference list, virtual nodes that belong to nodes that are already in the list are skipped. 
+\end{itemize}
+
+
+\end{itemize}
+\end{itemize}
+
 \section{Blockchain}
 
 \subsection{Tezos — a self-amending crypto-ledger White paper}
@@ -238,6 +342,67 @@ It should be noted that the size of a subtree is directly correlated with the ha
 \end{itemize}
 
 \item A final note: I don't believe that at this time Bitcoin uses the GHOST protocol. Ethereum uses a modified rule which awards coins to block creators that contributed to blocks that hang off the main chain. Also there seems to be some criticism stating the GHOST would centralize mining because well connected nodes benefit or something or other, I dunno it kinda seemed like the jury was out plus these were just comments on reddit and y combinator so who knows if the commenters actually knew what they were talking about
+\end{itemize}
+
+\section{Consensus}
+
+\subsection{Paxos Made Simple}
+Simple description of the Paxos algorithm for distributed consensus
+
+\begin{itemize}
+\item Consensus Algorithm
+\begin{itemize}
+\item Problem Statement
+\begin{itemize}
+\item Have a collection of distributed processes which can propose values
+
+\item Want a consensus algorithm that ensures that only a single value out of the proposed values is chosen such that 1. Only a value that has been proposed can be chosen 2. Only a single value is chosen 3. A process never learns that a value is chosen unless has actually been chosen
+
+\item There are three types of roles in the algorithm: $proposers$, $acceptors$, and $learners$.
+
+\item Processes communicate with one another by passing messages and we use an asynchronous Non-Byzantine model: 1. Processes operate at arbitrary speeds, can fail by stopping and restarting, has stable storage to remember information (if not then solution is impossible since all processes could fail after value selection) 2. There are no bounds for message delivery delays and can be duplicated and lost but not corrupted.
+
+\end{itemize}
+
+\item Choosing a Value
+\begin{itemize}
+\item A simple solution is to have a single $acceptor$ which accepts the first value it receives. \textbf{Problem:} Single $acceptor$ becomes single point of failure
+
+\item Another way it to have multiple $acceptors$ which $accept$ different proposed values from processes. A value is chosen when a majority of $acceptors$ have $accepted$ it (this works because any two majorities have at least one $acceptor$ process in common)
+
+\item \textbf{P1. An acceptor must accept the first proposal it receives}
+
+\item In order to satisfy \textbf{P1}, we must allow $acceptors$ to be able to $accept$ multiple values. 
+
+\item A proposal now consists of a unique proposal number (to uniquely identify proposals) and a value that is being proposed.
+
+\item \textbf{P2. If a proposal with value $v$ is chosen, then every higher-numbered proposal that is chosen has value $v$.}
+
+\item \textbf{P2A. If a proposal with value $v$ is chosen, then every higher-numbered proposal $accepted$ by an $acceptor$ has value v}. We must still satisfy \textbf{P1}, so we must strengthen \textbf{P2A} to \textbf{P2B}
+
+\item \textbf{P2B. If a proposal with value $v$ is chosen, then every higher-numbered proposal that is proposed by a proposer has value $v$.}
+
+\item Note that since $acceptors$ accept proposals which are proposed by proposers, we have $\textbf{P2B} \rightarrow \textbf{P2A} \rightarrow \textbf{P2}$
+
+\end{itemize}
+\end{itemize}
+\end{itemize}
+
+\subsection{The Part-Time Parliament}
+
+Describes the Paxos algorithm for reaching consensus in a distributed system
+
+\begin{itemize}
+\item Paxons' Parliament Description
+\begin{itemize}
+\item Primary task was to determine the law of the land
+
+\item Each member kept track of a numbered ledger to record the laws that were passed by the parliament
+
+\item First requirement was that member's ledgers were consistent (i.e. no two ledgers could contain conflicting information). If member $A$ has decree $X$ written at position $N$ then member $B$ cannot have decree $Y$ written at position $N$ in her ledger (she can leave position $N$ blank if she has not yet learned of decree $X$).
+
+\item Note that fulling the consistency condition can be made trivial (all members leave their ledger blank), there must also be a progress condition - If a majority of the members remained in the Parliament Chamber without anyone entering or leaving for a sufficiently long period of time, then any decree proposed by a member would be passed and all passed decrees would appear in the ledger of every member
+\end{itemize}
 \end{itemize}
 
 \section{Facebook}
