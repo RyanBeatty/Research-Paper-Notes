@@ -160,7 +160,80 @@ Your abstract.
 
 \item Handling Failures: Hinted Handoff
 \begin{itemize}
+\item Dynamo uses a "sloppy quorum" approach to coordinate reads and writes in order to maintain high availability in the face of network failures and partitions
 
+\item If a node in the top $N$ nodes of the preference list for a key is not healthy, another node (not in the top $N$) will be chosen
+
+\item The node will receive metadata indicating which node was the intended recipient of the key originally.
+
+\item The node will keep this keep in a separate local database and will periodically try to push keys in this database to their original receiver node once those nodes have come back online.
+
+\item In order to survive data center failures, the preference list for a key should be configured such that it contains nodes spanning many different data centers
+\end{itemize}
+
+\item Handling Permanent Failures
+\begin{itemize}
+\item Hinted handoff works best if system membership churn is low and network failures are transient
+
+\item To combat permanent failures, Dynamo uses an anti-entropy protocol along with Merkle trees to synchronize replicas
+
+\item The Merkle tree builds a hash tree of all of the keys a virtual node is responsible for
+
+\item Replicas compare Merkle trees with one another and fix inconsistencies
+\end{itemize}
+
+\item Membership and Failure Detection
+\begin{itemize}
+\item Dynamo uses an explicit mechanism to signal the permanent addition or removal of a node from the system (e.g. an operator use a CLI or browser to connect to a dynamo node and issue a membership request)
+
+\item The node that services the membership change request writes the details of the request and a timestamp to persistent storage. This info is then propagated via a gossip protocol where nodes choose a peer at random to connect to every second and reconcile their membership tables
+
+\item When a new node initially starts up, it chooses its own virtual nodes and persists this information. During membership reconciliation, nodes also reconcile key partition information. This allows nodes to have knowledge of which parts of the key space are owned by its peers in order to be able to route requests for those keys
+
+\item Some nodes act as "seed" nodes which are known to all nodes. These nodes are typically well connected in the system and prevent logical partitions from being formed since all nodes will communicate with the seed nodes. Seed nodes are discovered via some configured or external method
+
+\item Dynamo nodes only have a concept of local failure of other nodes (i.e. Node A might consider node B to be unhealthy if it is unresponsive even though node B is responsive to node C).
+
+\item Dynamo doesn't need a globally consistent notion of failure because of the explicit node join and leave mechanism
+\end{itemize}
+
+\item Bootstrapping New Nodes
+\begin{itemize}
+\item New nodes that enter the system take over the keys of the tokens it has chosen in the key space
+
+\item Older nodes that currently own these tokens detect the new node and offer to give the new node the keys it owns
+
+\item Once the new node accepts the offer and receives the tokens, the older nodes can forget their tokens
+
+\item Confirmation round ensures the new node doesn't receive any duplicate transfers for the same key range
+\end{itemize}
+
+\item Implementation
+\begin{itemize}
+\item 3 components: request coordination, membership and failure detection, and a local persistence engine
+
+\item Request coordinator is built using an event-driven solution
+
+\item Request handling is implemented as a state machine
+
+\item When servicing a read, if a response from a replica node is received by the coordinator after it has sent a response to the client and the replica node's response indicates that the objects the coordinator returned were stale, the coordinator will do read repair and update the read replica nodes with the up to date version of the object
+
+\item Write coordinators are typically chosen to be the node in the preference list that responded the quickest
+\end{itemize}
+
+\item Experiences and Lessons Learned
+\begin{itemize}
+\item Services either employ business logic or "last write wins" to handle conflict resolution
+
+\item Configuring N, W, and R really effect availability, durability and performance. Most services use (3, 2, 2) for (N, R, W)
+
+\item An optimization for writes is to have each node maintain an in-memory cache of objects. Writes are stored in the cache and a writer thread periodically flushes the cache to persistent storage. It should be noted this trades durability for performance. Coordinator nodes can also choose one replica to do a durable write such that the node will only store the write in its persistent storage, this helps mitigate total loss of writes during failures
+
+\item Experience shows that divergent versions numbers are an extremely rare phenomenon and mostly occur when there are a large number of concurrent writes for the same object (normally initiated by an automated client)
+
+\item Another approach to request routing is to have it all be on the client side. A client could download membership information from a Dynamo node every 10 seconds and send requests to the correct node and bypass a hop to the load balancer or to the correct coordinator node (in the case of writes). Pull model is used because it scales better with many clients
+
+\item Nodes must be careful not to allow the scheduling of background tasks (hinted handoff, replica synchronization) to create resource contention that could slow down foreground tasks (put, get). A monitor task monitors the nodes resource utilization and reserves slices of time for the background tasks to run
 \end{itemize}
 
 \end{itemize}
