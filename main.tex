@@ -239,6 +239,14 @@ Your abstract.
 \end{itemize}
 \end{itemize}
 
+\section{Apache}
+
+\subsection{Zookeeper: Wait-free coordination for Internet-scale systems}
+
+Zookeeper is a service for coordinating distributed processes
+
+Zookeeper appears to be Chubby but without the $open$ or $close$ locking methods
+
 \section{Blockchain}
 
 \subsection{Tezos — a self-amending crypto-ledger White paper}
@@ -648,6 +656,89 @@ advanced options for performance tunings
 
 
 \end{itemize}
+
+
+\section{Google}
+
+\subsection{The Chubby lock service for loosely-coupled distributed systems}
+
+Chubby is a lock service that allows distributed processes to synchronize their actions and reach agreement on info about their environment
+
+\begin{itemize}
+\item Goals of Chubby are reliability, and availability, easy to understand semantics
+
+\item Uses Paxos to solve distributed consensus and leader election. Augments with clocks to achieve liveness
+
+\item Provides course-grained locking - locks are expected to be held by the primary for a long duration
+
+\item System Structure
+\begin{itemize}
+\item Two main components: server and a library used by clients
+
+\item A Chubby cell consists of 5 replicas that choose a master via a consensus protocol. The master is chosen by a majority vote between the replicas and is guaranteed by to be the only master for a short interval known as the master lease time.
+
+\item Each replica maintains a simple database. Only the master coordinates reads and writes to this database. The replicas only copy updates from the master via the consensus protocol
+
+\item A client trying to connect to the Chubby service first must locate the master of the Chubby cell. It will send a master identification request to the replicas listed in the DNS. Replicas respond to this query by returning the identity of the master. The client then directs all future queries to the master unless the master becomes unresponsive or indicates it is no longer the master
+
+\item The master propagates write requests to all replicas and returns only once a majority of replicas have accepted the write request. The master services read requests itself since it is guaranteed to be the only master (note this is only safe if the master lease has not expired)
+
+\item If a master fails, the replicas will select a new master once the master lease is up. This normally takes only a few seconds
+
+\item If a replica fails for a long enough period of time, a monitoring recovery system will notice and start a new replica on a fresh machine. It will also update the DNS record and replace the IP address of the failed replica with that of the new one. The master periodically polls the DNS record and will learn of the new replica. The master will update the replica list in the database it maintains which will then get propagated to the other replicas via the consensus protocol. The new replica will eventually get a copy of this database via the consensus protocol but starts itself using backups of the database and information from the other replicas. The new replica is allowed to vote in the master election once it has responded to a write request from the current master
+\end{itemize}
+
+\item Files, directories, and handles
+\begin{itemize}
+\item Exposes a UNIX like filesystem containing a tree of files and directories
+
+\item An example path is $/ls/foo/wombat/pouch$. $ls$ (lock service) is the prefix for all Chubby names. $foo$ is the name of a Chubby cell that resolves to a Chubby server via DNS. $local$ is the name of a special Chubby cell that represents the Chubby cell local to the client (normally in the same building)
+
+\item In order to allow different Chubby masters to serve files in different directories, there isn't an operation to move a file between directories, directory modification time is not recorded, and file access is controlled by permissions on the file itself
+
+\item The system does not expose file access times in order to make it easier to cache file metadata
+
+\item Files and directories are called nodes (this is poor naming in my opinion)
+
+\item No symbolic or hard links for a node within a Chubby cell
+
+\item Nodes may be permanent or ephemeral. Nodes may be deleted and ephemeral nodes are also deleted if no client has them open. 
+
+\item Ephemeral files are temporary and used as a means for indicating that a client is still alive to other clients
+
+\item Access to nodes is maintained by ACL files which reside in a well-kown part of the Chubby cell's namespace. Each node's metadata points to 3 different ACL files (readfile, writefil, ACL modification file).
+
+\item ACL files contain names of users that are permitted to access the node in some way (read, write, modify ACL permissions)
+
+\item Nodes' metadata also includes other fields: an instance number that is greater than the instance number of any previous node with the same name, a content generation number that increases when the files contents are written (not for directories), a lock generation number which increases when a node's lock transitions from $free$ to $held$, and and ACL generation number which increases when the node's ACL names are modified
+
+\item A 64-bit file content checksum is also exposed so clients can tell if a file differs
+
+\item Clients open nodes to obtain handles which are like file descriptors. Handles contain: check digits which prevent clients from forging handles (ACL permissions need only be enforced at handle creation), a sequence number which signals to the Chubby master if the handle was created by itself or a previous master, and mode information which is provided at handle creation which allows a newly restarted master to recreate its state if an old handle is presented to it
+\end{itemize}
+
+\item Locks and sequencers
+\begin{itemize}
+\item Each Chubby file or directory can act as a reader/writer lock
+
+\item One client may exclusively hold the lock in write mode while many readers can share the lock in read mode
+
+\item Locks are advisory, meaning clients need not hold any locks to interact with files. However; attempts to hold the same lock may conflict
+
+\item Acquiring a lock in either mode requires write permission so that an unprivileged reader cannot stall a writer
+
+\item A problem that can occur in a distributed environment that uses is locking is the following situation: Process $A$ acquires lock $L$ and sends request $R$ but then fail after sending $R$. Process $B$ then acquires $L$ and sends message $R2$ which arrives before $R$ because of delays. $R$ will now act on data without the protection of $L$
+
+\item Sequence numbers are introduced to all messages that make use of a lock in order to guard against message delays
+
+\item A lock holder may request a $sequencer$ - an opaque byte-string that describes the state of the lock after acquisition. The $sequencer$ contains the name of the lock, lock generation number, and mode of the lock. The client passes the $sequencer$ to other clients if it expects operations to be protected by the lock. The recipient clients must validate that the $sequencer$ is valid (this can be done by checking its Chubby cache). 
+
+\item Chubby provides an (imperfect) additional guard against message delays. If a lock becomes free because of client failure, Chubby does not permit other clients from acquiring the lock for a configurable duration known as the $lock delay$
+\end{itemize}
+\end{itemize}
+
+
+
 
 \section{Scalability}
 
