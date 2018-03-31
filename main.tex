@@ -735,6 +735,49 @@ Chubby is a lock service that allows distributed processes to synchronize their 
 
 \item Chubby provides an (imperfect) additional guard against message delays. If a lock becomes free because of client failure, Chubby does not permit other clients from acquiring the lock for a configurable duration known as the $lock delay$
 \end{itemize}
+
+\item Events
+\begin{itemize}
+\item Clients may subscribe to events when they create a handle: file contents modified (normally used to monitor the change in a service advertised via a file), child node add/removed modified, Chubby master fail over, a handle + lock has become invalid, lock acquired, conflicting lock requests
+
+\item 
+\end{itemize}
+
+\item API
+\begin{itemize}
+\item $Open()$ takes a file or directory name relative to an existing directory handle (a valid handle to the '/' directory is always maintained by the client library) and returns a handle to that node. Client additionally specifies the mode to open the handle in, events to listen for, the $lock-delay$ time, and initial file contents + ACL list if the node to be opened will be newly created
+
+\item $Close()$ closes an open handle and never fails
+
+\item $Poison()$ invalidates any outstanding and future requests made using a handle without closing the handle
+
+\item $GetContentsAndStat()$ returns the full content + metadata for a file. Files are read atomically
+
+\item $GetStat()$ returns just the metadata and $ReadDir()$ returns children + metadata for a directory handle
+
+\item $SetContents()$ writes data to the file handle. Files are written atomically. Client may optionally add a generation number. The contents will then only be written if the supplied generation number is more current. $SetACL()$ does the analogous operation for ACL names
+
+\item $Delete()$ deletes the node if it has no children
+
+\item $Acquire()$, $TryAcquire()$, and $Release()$ all deal with locking
+
+\item $GetSequencer()$ obtains a sequencer describing any lock held by this handle
+
+\item $SetSequencer()$ associates a sequencer with a handle. All subsequent operations on the handle will fail if the sequencer becomes invalid.
+
+\item $CheckSequencer()$ checks if a sequencer is valid
+
+\item Handles are only associated with a specific $instance$ of a node rather than the node name itself. So operations on a handle for a node will fail if the node is deleted even if it is subsequently recreated
+
+\item ACL permissions are always enforced during $Open()$ calls and may be enforced on subsequent calls
+
+\item To make calls asynchronous, all operations may take a callback
+
+\item Master election can be performed using Chubby's API as follows: all potential primaries for a service open the lock file and attempt to acquire the lock. One succeeds and becomes the leader. The leader writes its address in the lock file using $SetContents()$, so it can be discovered by the replicas and clients of the service. Clients + Replicas learn of the primary's address using $GetContentsAndStat()$ (probably in response to a file modification event). Ideally, the primary creates a sequencer with $GetSequencer()$ which it passes to all servers it communicates with. Servers should verify the primary is still the current master by verifying the sequencer using $CheckSequencer()$.
+\end{itemize}
+
+\item Caching
+
 \end{itemize}
 
 
