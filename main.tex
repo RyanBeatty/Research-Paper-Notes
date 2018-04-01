@@ -777,17 +777,105 @@ Chubby is a lock service that allows distributed processes to synchronize their 
 \end{itemize}
 
 \item Caching
+\begin{itemize}
+\item Since most Chubby traffic are read requests, it is desirable to employ caching in order to reduce the amount of read traffic
+
+\item Chubby clients cache file data and node metadata in a consistent, write-through cache held in memory. The Chubby cell master keeps track of what each client $may$ be caching and sends cache invalidations to clients in order to keep their caches consistent
+
+\item When a write request for file data or node metadata comes into the Chubby master, it blocks the operation and sends (via KeepAlive RPC responses) cache invalidation events to all clients which may have cached the data to be changed. Once the Chubby master has received acknowledgement of the cache invalidation event from all of the clients it contacted (either through another KeepAlive RPC request or the expiry of the client's cache lease), it unblocks the write operation. Since writes are only a small portion of Chubby's traffic, its okay for them to be slower
+
+\item While the Chubby master is waiting for clients to respond to cache invalidation acknowledgments for a node, it treats the node as uncachable, meaning clients sending read requests for the node will not cache the node. However, this means that reads requests never have to block
+
+\item Clients acknowledge a cache invalidation event by removing the cached data and then making a KeepAlive RPC request
+
+\item Client caching is simple - clients can only cache and invalidate objects. There is no updating cached objects. If updates were allowed, clients that accessed a file once and then never again could potentially get a large number of unnecessary cache update events 
+
+\item Clients can also cache open handles. If a client calls $Open()$ on a node that it had previously opened, only the first RPC call will make it to the Chubby master. Clients may also cache locks
+\end{itemize}
+
+\item Sessions and KeepAlives
+\begin{itemize}
+\item Sessions between clients and Chubby cells are maintained via periodic KeepAlive RPCs. Sessions guarantee that all of the client's cached data, locks, and handles remain valid while the session is valid.
+
+\item Clients request sessions by contacting the Chubby master. Sessions are ended either explicitly or when the client has idled for too long
+
+\item Sessions have a lease time during which the Chubby master may not terminate the session. The master is free to extend this lease time
+
+\item Session leases are extend in three circumstances: Upon session creation, when master failover occurs, and when a master responds to a KeepAlive RPC.
+
+\item When a Chubby master receives a KeepAlive request, it blocks the call until right before the client's session lease is about to expire. It then returns a response to the client with the new session lease time. The client then immediately sends another KeepAlive RPC. 
+
+\item KeepAlive RPCs are also used by the master to send events and cache invalidations to the client. A master will return a KeepAlive RPC response early if such an event has occurred. This simplifies the Chubby protocol and allows client - master communication to work through firewalls which only allow establishing connections one way
+
+\item The client maintains a local session lease timeout which is a conservative approximation of the master's lease timeout. This means the master's clock must not advance faster than the client's clock by no more than a constant factor
+
+\item When a client's local lease time expires, it can't be sure if the master has terminated its sessions, so it enters into a $session jeopardy$ mode. The client empties and disables its cache and tries to establish another KeepAlive RPC with the master with a timeout. If the client and master exchange a successful KeepAlive RPC, the client enables its cache again; otherwise, it assumes its session is terminated. This is so that the client does not block indefinitely waiting for RPCs to be returned from the Chubby master
+
+\item The Chubby library will notify the application if its session goes into jeopardy with an event. The library will also send either a session $safe$ or $expired$ event once the session either recovers or is confirmed to be ended.
+\end{itemize}
+
+\item Fail-overs
+\begin{itemize}
+\item When a Chubby master fails or loses mastership, it discards all of its in-memory state about sessions, handles, and locks. The timer for sessions leases also stops during this time since it only runs at the current master.
+
+\item When a master failure or change occurs, clients session can potentially go into $jeopardy$ depending on how long the mastership change takes
+
+\item When a new Chubby master is elected and a client has contacted it, the new Chubby master must recreate the in-memory state of the old master. It does this by reading data on disc (obtained through the database replication protocol), by obtaining state from clients, and by conservative assumptions. The database records each session, held lock, and ephemeral files
+
+\item New elected masters:
+\begin{enumerate}
+\item Picks a new $epoch number$ which must be sent by clients on every call to the master. The master will reject client requests using an older $epoch number$
+
+\item The master may respond to new master location requests but does not when first processing a session
+
+\item It builds the in-memory data the old master had for sessions and locks from the database. It also extends session lease
+
+\item The master now lets clients perform KeepAlive requests but no other session-related operations
+
+\item It emits a mastership change event to all sessions. This lets clients know to flush their caches and warn their applications of potentially lost messages
+
+\item The master waits for all sessions to acknowledge the mastership change or let their session lease expire
+
+\item The master allows all operations to proceed
+
+\item If a client uses a handle created from a previous master (based on the sequence number of the handle), the master recreates the in-memory representation of the handle and accepts the requests. If a recreated handle is closed, then the master notes this so that it cannot be recreated in $this$ (but possibly future) master epoch
+
+\item After a short interval, the master deletes all ephemeral files that have no open file handles. Therefore, clients should promptly refresh handles on ephemeral files after a mastership change
+\end{enumerate}
+\end{itemize}
+
+\item Database Implementation
+\begin{itemize}
+\item Chubby initially used the replicated version of Berkley's DB
+
+\item Google however chose to write their own replicated database using write-ahead logging and snapshotting similar Birell $et all$ 
+\end{itemize}
+
+\item Backup
+\begin{itemize}
+\item Every so often the master of a Chubby cell writes a snapshot of its data to a GFS file server in another building. Different buildings provide data redundancy in the case of building damage as well as eliminating cyclic dependencies between GFS cells and Chubby cells (since a GFS cell might use the Chubby cell in its building for mastership election)
+
+\item Backups allow newly replaced replicas to be bootstrapped without placing load on existing replicas in the cell
+\end{itemize}
+
+\item Mirroring
+\begin{itemize}
+\item Chubby allows mirroring of files between cells.
+
+\item Mirroring is most commonly used to deploy configuration files around the globe
+
+\item A special Chubby cell called $global$ has a subtree called $/ls/global/master$ which is mirrored at every Chubby cell under the subtree $/ls/\$cell/slave$. Each member of the $global$ cell is spread out across the globe so that any client can contact this cell
+
+\item The $/ls/global/master$ subtree contains Chubby's own ACL info as well as various files with locations of Chubby cell's where certain services (such as BigTable) are advertised  
+\end{itemize}
+
+\item Mechanisms for Scaling
+\begin{itemize}
 
 \end{itemize}
 
+\end{itemize}
 
-
-
-\section{Scalability}
-
-\subsection{Harvest, Yield, and Scalable Tolerant Systems}
-
-Defines Brewer's CAP Theorem.
 
 \section {Paper Backlog}
 
