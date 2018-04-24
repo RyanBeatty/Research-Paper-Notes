@@ -24,6 +24,83 @@
 Your abstract.
 \end{abstract}
 
+\section{Apache}
+
+\subsection{Spark: Cluster Computing with Working Sets}
+
+\begin{itemize}
+
+\item Introduction
+\begin{itemize}
+\item Spark is a cluster computing framework that targets applications where a working set of data is reused iteratively. Iterative jobs (such as some machine learning algorithms) and Interactive analytics (such as querying large amounts of data in a database) are prime examples of such applications
+
+\item Spark's main abstraction is that of Resilient Distributed Datasets (RDDs) which are a read only collection of data that is partitioned across multiple machines with fault tolerance
+\end{itemize}
+
+\item Programming Model
+\begin{itemize}
+
+\item Programmers write a driver application which contains high level instructions for performing a parallel computation
+
+\item The two main abstractions for parallel programming are Resilient Distributed Datasets and Parallel Operations
+
+\item RDDs
+\begin{itemize}
+\item RDDs are a collection of data objects distributed over a cluster of computers such that any partition can be rebuilt if a node fails
+
+\item RDD handles contain enough information to rebuild the elements of the set from data in reliable storage. This means that elements of an RDD need not be held in physical storage and can be rebuilt if a node fails
+
+\item RDDs can be built in 4 ways:
+\begin{enumerate}
+\item By parallelizing a collection (e.g. an array) in the driver program into slices to be sent to worker nodes
+
+\item By transforming an existing RDD using operations such as flatMap, map, and reduce (Note: this suggests that RDDs form a Monad)
+
+\item By changing the persistence of an RDD. By default RDDs are lazy and are discarded after use. An RDD can be reused either by enabling cache hinting (e.g. cache the RDD if possible) or saving the RDD after operations have been performed on it
+\end{enumerate}
+
+\item Spark supports the reduce, collect, and foreach parallel operations on RDDs. Reduce combines elements of an RDD using an associative function for collection at the driver program. Collect sends elements of the RDD to the driver program (this allows easy updates of collections such as arrays). Foreach passes each element of an RDD through a function which has side effects (e.g. copying the data to another filesystem, etc). 
+
+\item Spark supports two notions of shared state: Broadcast variables and accumulators
+
+\item Broadcast variables are read only pieces of data that each worker node has access to. This allows programmers to only copy this data to each worker once instead of having to bundle it in every closure it sends to the workers (Note: this seems to me like a case of the Reader Monad)
+
+\item Accumulators are values that only workers can add to using an associative function and which only the driver can read. This can be used to implement counters. Note: accumulators are Monoids. 
+
+\end{itemize}
+
+\item Implementation
+\begin{itemize}
+\item Spark is built on top of Apache Mesos which is a framework for cluster computing
+
+\item RDDs are stored as a chain of objects forming a lineage. Each dataset points to its parent dataset and stores enough information to know how the parent was transormed.
+
+\item RDDs internally all implement the same interface: getPartitions() which returns a list of partition ids, getIterator(partition) which iterates over a partition, and getPrefferedLocations(partition) which is used for task scheduling to achieve data locality.
+
+\item Spark creates tasks for each partition of a parallel operation and attempts to send these tasks to preferred worker nodes using delay scheduling. Once a worker receives a partition, it calls getIterator() to start iterating over it.
+
+\item Shipping tasks to workers involves shipping both the closures used to defined the RDD and the ones used to operate on it. Spark uses Java's serialization to ship closures
+
+\item Broadcast variables are initially stored in a shared file system and then cached by worker nodes on demand. The serialization format for a broadcast variable is a path to the file storing its data
+
+\item Accumulators are created for each thread running a task on a worker and "zeroed-out" after the task completes. Workers send the final value of task accumulators to the driver program for collection. Serialized accumulators contain a unique id and the "zero value" for the accumulator
+\end{itemize}
+
+\item Related Work
+\begin{itemize}
+\item RDDs are an abstraciton of Distributed Shared Memory (DSM)
+
+\item RDD and DSM differ in two ways: DSM normally uses checkpointing to recover from node failure while RDD uses cheaper lineage information to rebuild lost partitions, and RDDs push computation to the data while DSM operates on a global address space
+
+\item The key component of Spark is allowing data to persist across iterations of a distributed job
+
+\item Lineage on datasets is a well studied area
+\end{itemize}
+
+\end{itemize}
+
+\end{itemize}
+
 \section{Amazon}
 
 \subsection{Dynamo: Amazon's Highly Available Key-value Store}
