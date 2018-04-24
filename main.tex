@@ -962,6 +962,82 @@ Chubby is a lock service that allows distributed processes to synchronize their 
 \item \textbf{A Fistful of Bitcoins: Characterizing Payments Among Men with No Names} Sarah Meiklejohn, Marjori Pomarole, Grant Jordan, Kirill Levchenko, Damon McCoy, Geoffrey M. Voelker, Stefan Savage
 \end{itemize}
 
+\subsection{MapReduce: Simplified Data Processing on Large Clusters}
+
+\begin{itemize}
+\item MapReduce is a framework that allows programmers to automatically parallelize and distribute computations across a large cluster of commodity machines
+
+\item Programming Model
+\begin{itemize}
+\item A MapReduce computation takes a set of input key/value pairs and produces a set of output key/value pairs by applying user-defined functions map and reduce to the dataset.
+
+\item Map takes an input pair and produces an intermediate set of key/value pairs. the MapReduce framework then groups all intermediate keys with the same value and passes them to the reduce function
+
+\item The reduce function takes an intermediate key and a set of values for that key and produces a potentially smaller set of values for that key
+\end{itemize}
+
+\item Implementation
+\begin{itemize}
+\item Map invocations are distributed across machines by automatically partitioning the input dataset. The intermediate keys produced from map are further partitioned into $R$ sets and are run throught the reduce funciton. Map, reduce, and $R$ are supplied by the programmer
+
+\item Execution order
+\begin{enumerate}
+\item When MapReduce is first called, it splits the input data into partitions and forks a bunch of worker processes that will handle the map and reduce phase as well as a master processes for assigning partitions to workers
+
+\item Worker processes read their assigned input data partitions and run each parsed key/value pair throught the map function and buffer the intermediate key output in memory
+
+\item Map Workers periodically buffer the output intermediate key/value pairs to local disk and send these disk locations to the master process who is responsible for forwarding this info to the reduce workers
+
+\item Reduce workers are notified of the intermediate key/value pair disk locations on the map workers and read this data via RPCs. Once it has read all intermediate data, it sorts the data and groups similar keys together since many different keys may be mapped to the same reduce worker. An external sort is used if the data to be sorted is too large to fit into memory
+
+\item The reduce worker passes each unique key and all of the data for that key to the reduce function and saves the output to a file 
+
+\item When all map and reduce workers are done, the master wakes the user program and returns control back to the user code
+\end{enumerate}
+
+\item When a MapReduce job is completed the output is consolidated into $R$ output files which the user may access
+
+\item The master process stores several pieces of information for each worker process. It stores the state (idle, in-progress, or completed) and the identity of the worker machine (for non-idle tasks). The master also stores the $R$ disk locations of the intermediate output emitted by the map tasks. this information is pushed incrementally to in-progress reduce workers
+
+\item To detect and handle worker failure, the master sends a healthcheck ping in small time intervals. If a worker is marked as failed, all map tasks it has completed and all map and reduce tasks that are in-progress are reset to an idle state and rexecuted by another worker. Completed map tasks must be reexecuted because the intermediate results are stored on the local disk of workers. On the other hand, completed reduce tasks need not be recomputed since they are stored in a shared global file system. Reduce workers are also notified of map worker failures and are told the new worker disk location to read the task data from
+
+\item Master workers can take checkpoints of the state of its data structures periodically. Master failure is unlikely since there is only a single master process. The paper implementation of MapReduce simple aborts the entire MapReduce job if there is a master failure
+
+\item To try and save on network bandwidth, the master process tries to schedule map tasks on workers that already have the partition of the data it needs on local disk
+
+\item Typically the initial $M$ partitions of the input data is chosen to be much larger than the number of worker machines while the $R$ output files are chosen to be a much smaller multiple of $M$
+
+\item "straggler" tasks, tasks where the worker is taking an unusually long amount of time to complete a task, are a common reason why MapReduce jobs can take a long time to finish. To alleviate this, the master node will schedule backup tasks of all in-progress tasks on different machines when a MapReduce job is close to completion. The master marks the tasks as complete whenever either the original or the backup tasks complete
+
+\end{itemize}
+
+\item Refinements
+\begin{itemize}
+\item A useful extension is to allow users to supply the partitioning function that creates the $R$ partition of output files
+
+\item Intermediate key/value pairs are guaranteed to be processed in increasing order. This is useful when the output files need to be accessed in efficient random order
+
+\item A combiner function can be supplied by the user to save on network bandwidth. A combiner function is essentially just a reduce function that gets run on the map task output on the map worker before being sent to a reducer worker
+
+\item MapReduce allows for users to implement a reader interface for reading in input data for the MapReduce job and a writer interface for outputing data
+
+\item Users can create auxiliary, temporary files during a map or reduce function; however, it is the responsibility of the user to make operations on these files atomic
+
+\item MapReduce allows optional skipping of bad records that make jobs deterministically fail. When a record causes a worker to fail, a signal handler sends a UDP packet containing the record id that caused it to fail to the master. If the master sees multiple failures across different workers for a record, it indicates that the record should be skipped
+
+\item The master exposes an HTTP server with the state of all tasks and workers in the MapReduce computation
+
+\item MapReduce allows users to create statistic and diagnostic counters. Counters are named and are incremented in the map or reduce function. Tasks increment counters during execution and periodically send the counter values to the master for aggregation (this is done within the healthcheck ping response). The master displays counter values on the status page and returns the values to the user code after the MapReduce job has been completed. The master also handles duplicate counters that arise from task rescheduling or backup tasks 
+
+\end{itemize}
+
+\item Performance
+\begin{itemize}
+
+\end{itemize}
+
+\end{itemize}
+
 
 % \section{Introduction}
 
