@@ -1039,6 +1039,51 @@ Chubby is a lock service that allows distributed processes to synchronize their 
 \end{itemize}
 
 
+
+\section{Replication}
+
+\subsection{Implementing Fault-Tolerant Services Using the State Machine Approach: A Tutorial}
+
+Author: F.B. Schneider
+
+\begin{itemize}
+\item State Machines
+\begin{itemize}
+\item A state machine consists of a set of variables which encode the state of the machine and a set of commands which deterministicly transform the state of the machine.
+
+\item Clients interact with state machines by issuing requests to execute commands.
+
+\item Because state machines execute requests one at a time in the order they were received, clients can assume: O1) Requests issued by a single client to a given state machine are processed in the order they were issued. O2) If a request $r$ made by client $c$ causes a request $r'$ to be issued by client $c'$, then $r$ is processed by $r'$ (I believe this is a causality condition outlined in one of Lamport's papers)
+
+\item The defining characteristic of a state machine is that it is a deterministic process that reads in a stream of requests and occasionally produces output.
+
+\item Outputs of a state machine should be completely independent of time and other system activity and should only be determined by the sequence of input requests. This means that state machine commands should not implement any sort of time varying functionality.
+
+\item State machines implement procedures and clients implement procedure calls
+\end{itemize}
+
+\item Fault Tolerance
+\begin{itemize}
+
+\item Component failures occur in practice when a component no longer follows its specification.
+
+\item Two classes of failures are considered: Byzantine failures and Fail-stop failures
+
+\item Byzantine failures occur when a component exhibits arbitrary or malicious behavior, sometimes colluding with other faulty components (Note: Byzantine failures are problematic for permissionless systems such as the blockchain).
+
+\item Fail-stop failures occur when a component switches to a failure state that is detectable by other components
+
+\item Most applications can assume just fail-stop failures will occur, but critical systems should assume that Byzantine failures may also occur
+
+\item To measure fault tolerance, the notion of \textit{t fault tolerance} is introduced. A system of distinct components is \textit{t fault tolerant} if it can continue to operate according to its spec if no more than \textit{t} of those components fail.
+
+\item Statistical methods (such as the mean time between failures and the probability of failures in a given time interval) can also be used to measure the fault tolerance of a system. However, Schneider argues that using \textit{t fault tolerance} as a measurement for system fault tolerance is advantageous because it makes explicit the assumptions needed for a system to work and is not tied to the reliability of the components of the system (as statistical measurements normally are). The value of $t$ is normally computed via statistical methods
+
+
+\end{itemize}
+\end{itemize}
+
+
 % \section{Introduction}
 
 % Your introduction goes here! Some examples of commonly used commands and features are listed below, to help you get started. If you have a question, please use the help menu (``?'') on the top bar to search for help or ask us a question. 
