@@ -1078,9 +1078,68 @@ Author: F.B. Schneider
 \item To measure fault tolerance, the notion of \textit{t fault tolerance} is introduced. A system of distinct components is \textit{t fault tolerant} if it can continue to operate according to its spec if no more than \textit{t} of those components fail.
 
 \item Statistical methods (such as the mean time between failures and the probability of failures in a given time interval) can also be used to measure the fault tolerance of a system. However, Schneider argues that using \textit{t fault tolerance} as a measurement for system fault tolerance is advantageous because it makes explicit the assumptions needed for a system to work and is not tied to the reliability of the components of the system (as statistical measurements normally are). The value of $t$ is normally computed via statistical methods
+\end{itemize}
+
+\item Fault-tolerant State Machines
+\begin{itemize}
+\item A $t fault tolerant$ state machine can be implemented by running replicas of the state machine on different processors in a distributed system
+
+\item If Byzantine failures are assumed in a $t fault tolerant$ system, then an ensemble of state machine replicas must have at least $2t + 1$ replicas to survive $t$ failures. The output of the replicated state machine is the output of the majority of the replicas.
+
+\item If fail-stop failures are assumed in a $t$ fault tolerant system, then the ensemble must have $t+1$ replicas. The output of the ensemble is any of the outputs of the replicas
+
+\item Replica coordination is needed to implement $t fault tolerant$ systems and can be accomplished by making sure that every non-faulty replica receives every request (Agreement) and processes requests in the same relative order (Order).
+
+\item If we assume only fail-stop failures, then the Agreement condition can be relaxed for read-only requests since they can be sent to any non-faulty replica (instead of all replicas).
+
+\item The Order condition can be relaxed for requests that commute - i.e. requests whose order do not change the final state of the state machine.
+
+\item Agreement
+\begin{itemize}
+
+\item Agreement can be obtained by any protocol that allows a designated process, called the transmitter, to broadcast a value to the other replicas such that the following are satisfied: IC1: All non-faulty replicas agree on the same value. IC2: If the transmitter is non-faulty, then all non-faulty replicas use its value as the one on which they agree
+
+\item These types of protocols are often called Byzantine agreement protocols, reliable broadcast protocols, agreement protocols (consensus protocols?).
+
+\item The transmitter can either be the client sending the request or a special replica. If the client is not the transmitter, then special care must be taken to make sure that the transmitter does not lose or corupt the request (this can be done by including the client in the set of processors in the agreement protocol).
 
 
 \end{itemize}
+
+\item Order
+\begin{itemize}
+\item In order to satisfy the Order requirement for Replica Coordination, the replicas must process all requests in some total order. This can be accomplished by assigning a unique identifier to each request and only processing requests once they become stable (i.e. once a replica is guaranteed that no request from any correct client with a lower identifier can be received). Therefore, replicas only processes the next stable request with the lowest identifier
+
+\item Note that the method for assigning unique identifiers to requests is constrained by O1 and O2, meaning that if request $r$ is causaly related to request $r'$ ($r$ processed before $r'$), then $uid(r) < uid(r')$
+
+\item One way we can create a total ordering of requests is to use Logical Clocks (as described by Lamport in his seminal paper). Each processor $p$ starts with a clock value $T_p$ which is incremented accordingly: LC1) $T_p$ is incremented $after$ each event at $p$. LC2) Upon receipt of a message with timestamp $m$, $T_p = max(m, T_p) + 1$.
+
+\item Next we need to formalize a stability condition. It should be noted that when assuming Byzantine failures it is impossible to gurantee with a deterministic protocol that agreement can be reached. Therefore, a stability condition can only be created for environments with synchronized clocks or environments where fail-stop failures can only occur but there are no message time bounds.
+
+\item If we assume that fail-stop failures can only occur with no message time bounds and if we use logical clocks to generate sequence numbers for requests, then we can show that two properties of communication channels hold: \textbf{FIFO)} Messages between pairs of processors are delivered in the order in which they were sent. \textbf{Failure Detection Assumption)} A processor $p$ only detects that a processor $q$ has become faulty after the last message sent by $q$ is received by $p$. With these assumptions, we can create the \textbf{Logical Clock Stability Test Tolerating Fail-stop Failures:} Every client periodically makes requests (with some being no-op requests) to the state machine. A message $r$ is stable once a state machine has received a message with a larger timestamp from \textit{every} non-faulty client.
+
+\item Proof of the above: The \textbf{FIFO Assumption} of communication channels guarantees that clients will always send requests with monotonically increasing timestamps; therefores, once a request $r$ is received by state machine $sm$ from client $c$, no other $r'$ will be received by $sm$ from $c$ with a lower timestamp than $r$. Once $sm$ has received messages from all non-faulty clients with timestamps greater than $r$, then $sm$ will not receive lower timestamps from those clients. For clients that can fail, the \textbf{Failure Detection Assumption} guarantees that those clients will stop sending messages at some time; therefore, $sm$ can be assured that it will not receive a message with a timestamp lower than $r$ from faulty clients after they have been detected to have failed.
+
+\item \textbf{Note that I'm skipping synchronized clocks case because I don't fully get it. Need to read more about what bounded clock synchronization actually looks like}
+
+\item A third method of generating unique identifiers for requests is to have the replicas agree on the identifier for a request as part of the agreement protocol that satisfies the Agreement requirement. An advantage to this approach is that all processors in the system no longer need to always be communicating (this was needed to gurantee message stability or clock synchronization in the previous two approaches).
+
+\item We can implement such a unique identifier system like so: When a replica $sm_i$ first receives a request $r$, they propose a candidate unique identifier $cuid(sm_i, r)$. At this point the replica is said to have $seen request r$. A replica has $accepted$ request $r$ once it knows $uid(r)$ - the final accepted unique identifier for $r$.
+
+\item To gurantee that identifiers generated in this manner are totally ordered, we must add two constraints: \textbf{UID1)} $cuid(sm_i, r) \le uid(r)$. \textbf{UID2)} If a replica sees request $r'$ after accepting request $r$, then $uid(r) < cuid(sm_i, r')$ 
+
+\item \textbf{Replica-Generated Identifiers Stability Test)} A request $r$ that has been accepted by state machine $sm_i$ is stable provided there is no request $r'$ that has been seen by $sm_i$, not been accepted yet by $sm_i$ and for which $cuid(sm_i, r') \le uid(r)$.  
+
+\item Proof of the above: Assume that a request $r$ has been accepted by state machine $sm_i$, we must show that it is not possible for $sm_i$ to accept a request with a lower $uid$ than $r$. For the case of requests $r'$ that have not yet been seen by $sm_i$, it follows from $UID2$ that $uid(r) < cuid(sm_i, r')$; therefore, it follows transitively from $UID1$ that $uid(r) < cuid(sm_i, r') \le uid(r') \rightarrow uid(r) < uid(r')$. For requests that have been seen by $sm_i$ but not yet accepted yet, it follows from our assumption that $r$ is stable that $uid(r) < cuid(sm_i, r')$ and (using the previous logic) $uid(r) < uid(r')$.
+
+\item Note that $uid's$ generated by replica sets do not necessarily satisfy $O1$ and $O2$ (consider the case where a client sends a request $r$ and then sends a message to another client which triggers request $r'$, it is possible that $uid(r') < uid(r)$ even though $r < r'$). Thus, we must contraint clients so that once they make a request $r$ to the replica set, they may not make any further communication until $r$ has been accepted (this seems rather limiting...).
+
+\item To complete our Order implementation, we must guarantee that our protocol satisfies: 1) $UID1$ and $UID2$ 2) $r \neq r' \rightarrow uid(r) \neq uid(r')$ 3) Every request that is seen is eventually accepted.
+
+
+\end{itemize}
+\end{itemize}
+
 \end{itemize}
 
 
