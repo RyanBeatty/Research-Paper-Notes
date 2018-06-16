@@ -1136,7 +1136,46 @@ Author: F.B. Schneider
 
 \item To complete our Order implementation, we must guarantee that our protocol satisfies: 1) $UID1$ and $UID2$ 2) $r \neq r' \rightarrow uid(r) \neq uid(r')$ 3) Every request that is seen is eventually accepted.
 
+\item \textbf{Replica-Generate Unique Identifiers: } For a system with $N$ clients, each state machine $sm_i$ maintains $SEEN_i$ which is the largest $cuid(sm_i, r)$ known for any seen request $r$ and $ACCEPT_i$ which is the largest accepted $uid$ for a request $r$ at $sm_i$. Upon receipt of a request $r$, each replica $sm_i$ computes $cuid(sm_i, r) = max(floor(SEEN_i), floor(ACCEPT_i)) + 1 + \frac{i}{N}$, disseminate (using the agreement protocol) the candidate to all other replicas, and then wait for a receipt candidate from all replicas. The replica then computes $uid(r) = max_{sm_j \in N }(cuid(sm_j, r))$ and acccepts $r$.
 
+\item $UID1$ holds from the calculation of $uid$ (it is guaranteed to be greater than or equal to every candidate uid). $UID2$ holds from the calcuation of $cuid$ above (a newly seen request $r'$ will have to have a $cuid$ larger than any accepted request $r$). $r \neq r' \rightarrow uid(r) \neq uid(r')$ follows because the agreement protocol guarantees that all replicas get the all the same $cuid's$, so they will all execute the calculation of $uid$ in the same way. $uid's$ are unique for each request because the maximums of disjoin subsets of a collection of unique values (the $cuid's$) are also unique. Finally every request is accepted because all replicas eventually learn all $cuid's$ or that a replica has failed by the gurantees of the agreement protocol.
+
+\item This protocol can be modified to tolerate Byzantine failures by using timeouts when waiting on $cuid$ receipts from replicas. When a replica times out, the awaiting replica broadcasts that replica $sm_j$ timed out and they are removed from the agreement protocol.
+\end{itemize}
+\end{itemize}
+
+\item Tolerating Faulty Output Devices
+\begin{itemize}
+\item In order to implement a $t fault tolerant$ system by using an ensemble of state machines, a single voter cannot be used to combine the replica outputs because it will create a single point of failure. If the output of the ensemble is used outside the system, output devices must be replicated and the voter must combine the outputs from all the devices (either using majority wins in the case of BF or any output in the case of FS). For outputs used inside the system, the client combines the result of the ensemble. A failure of the client is irrelevant to the system then. The client waits for $t+1$ responses in the case of BF and any response in the case of FS.
+\end{itemize}
+
+\item Tolerating Faulty Clients
+\begin{itemize}
+\item Schneider mentions that you can replicate the client to avoid failures, but I think this really complicates things as now you might need to also have replica coordination just among the clients. You'll also need to change the state machine protocol to handle the increased requests. Plus there will be the added message complexity.
+
+\item Timeouts can also be used to guard against faulty clients.
+\end{itemize}
+
+\item Reconfiguration
+\begin{itemize}
+\item $t fault tolerant$ systems can continue to function past $t$ failures if there is a way to remove faulty processors from the system and add healthy processors to the system. A system can continue to function correctly as long as it meets the \textbf{Combining Condition:} $healthy - failed > 0 (for only fail stop) or \frac{healthy}{2} (for byzantine)$
+
+\item In order to remove or add processors to a running system, the configuration of the system must be changed. The configuration of a system can be modeled as a state machine and can be described in 3 sets $C$ (the clients in the system), $S$ (the state machines in the system), and $O$ (the output devices in the system. $S$ must be known to all processors in the system because it is used in the agreement protocol and $C$ and $O$ must be known to all state machines so that they know where to send output.
+
+\item In order to update the configuration of a running system, two problems need to be solved: 1) $C$, $S$, and $O$ must be available when needed (configuration management) 2) The state of a newly added element must match the state of the system.
+
+\item Configuration Management
+\begin{itemize}
+\item the sets $C$, $S$, and $O$ are stored as state variables in the state machine ensemble they apply too. Since these variables can be modified, they are only valid for requests with a $uid$ in the range on two successive configuration change requests. Configuration changes can be made available to clients and output devices either using a pull method (client and output devices query config info from the state machine) or a push based method (configuration changes are included in messages from the state machines to clients and outputs). 
+
+\item A group of clients called $configurators$ monitors the system for failing clients, state machines, and output devices and makes configuration change requests to repair the system. It should be noted that a configurator failure is the same as the failure of the element that the configurator is monitoring
+\end{itemize}
+
+\item Integrating a Repaired Object
+\begin{itemize}
+\item Integrating new clients and outputs is easy - a replica just sends its state variables to them.
+
+\item Integrating a new state machine is a bit more complex - a different state machine sends its state variables and pending requests to the new machine until it receives requests from clients
 \end{itemize}
 \end{itemize}
 
