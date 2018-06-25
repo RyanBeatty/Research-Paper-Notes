@@ -326,6 +326,8 @@ Zookeeper appears to be Chubby but without the $open$ or $close$ locking methods
 
 \section{Blockchain}
 
+
+
 \subsection{Tezos — a self-amending crypto-ledger White paper}
 
 Proposes a new cryptocurrency where users can vote to change the blockchain policy at any point.
@@ -1036,6 +1038,84 @@ Chubby is a lock service that allows distributed processes to synchronize their 
 
 %\end{itemize}
 
+\end{itemize}
+
+
+\section{Graphs and Link Analysis}
+
+\subsection{Algorithms for Estimating Relative Importance in Networks}
+
+Formalizes a way to answer the query "How important is a node in a graph relative to another node or set of nodes"
+
+\begin{itemize}
+\item Methods already exist to rank the importance of nodes in a network with respect to all other nodes in the network (i.e. PageRank). Another useful query is being able to introduce nodes that are known as import a priori and then analyze the importance of all nodes in a graph relative to this root set of nodes. Note that as the root set of nodes approaches the full set of nodes in the graph, the relative importance approaches the global importance
+
+\item Notation 
+\begin{itemize}
+\item A directed graph $G=(V, E)$ can be formalized as two sets: $V$ is the set of vertices, and $E$ is the set of edges. Each edge is an ordered pair of the form $(u, v), u,v \in V$. Graphs in this paper are assumed to be directed, unwieghted and simple - no self loops (can have cycles though) and no parallel edges (two directed edges connecting the same two nodes). Undirected graphs are just a special case of directed graphs. A walk from $u$ to $v$ is a sequence of edges connecting vertex $u$ to $v$ and is dentoted by $(u, u_2)(u2_, u_3)...(u_n, v)$ or just $u - u_2 - u_3 -...-v$. A walk is a path if all vertices in the walk are unique, and paths are node-disjoint if they share no vertices in common. The $k-shorts$ paths are all paths with length less than $k$. $P(u,v)$ are a particular set of paths from $u$ to $v$. $S_out(u)$ and $S_in(u)$ are the set of outgoing and incoming edges to/from $u$ respectively. $d_out(u) = |S_out(u)|$ and $d_in = |S_in(u)|$.
+\end{itemize}
+
+\item Problem Formulation
+\begin{itemize}
+\item There are several problem formations that each become more general:
+\begin{enumerate}
+\item Given graph $G$ and nodes $r, t$ where $\{r, t\} \subset G$, compute the "importance" of $t$ with respect to the root node $r$ and denote this value as $I(t|r)$ (normally a non-negative number).
+
+\item Given $G$ and $r \in G$, rank all vertices in $T(G), T \subseteq V$ with respect to $r$. We can apply the solution to $1$ to find each $I(t|r)$ for $t \in T(G)$ and then sort the values to order the results by importance.
+
+\item Given $G$, a set of nodes $T(G)$ to rank, and a set of root nodes $R(G)$ where $R \subseteq V$, rank all vertices in $T$ with respect to $R$. Note that that we can simply use the solution of $2$ to rank each $t \in T(G)$ against every $r \in R(G)$ and then aggregate each result somehow (either average or minimum rank). More formally, we can define $I(t|R) = F(\{I(t|r) | r \in R\})$ where $F()$ can be some function. Examples of $F$ are the average score in which case: $I(t|R) = \frac{1}{|R|}\sum_{r \in R}I(t|r)$ or the minimum score. This paper normally chooses $F$ to be the average.
+
+\item Given $G$, rank all nodes. This is a special case of $3$ where $R=T=V$. 
+\end{enumerate}
+\end{itemize}
+
+\item Computing Relative Importance Using Weighted Paths
+\begin{itemize}
+\item There is a class of algorithms that uses graph-theoretic notions of distance to compute the relative importance of a node in a graph. The two main properties modeled using this approach are \textbf{1)} Two nodes are related according to the paths that connect them \textbf{2)} The longer the path is, the less importance in conferred accross the path. Therefore, we can define $I(r|t)$ as follows: \textbf{I2} $I(t|r) = \sum_{i = 1}^{|P(r,t)|} \lambda^{-p_i}$ where $P(r,t)$ is \textbf{a} set of paths from $r$ to $t$, $\lambda$ is a scalar $1 < \lambda < \infty$ that is how much importance is conveyed from jump to jump in a path, and $p_i$ is the $ith$ path is $P(r, t)$. Notice that the amount of importance that is conveyed along a path decreases exponentially as the length of the path increases. Choosing $P$ now is driven by how we want to define importance in a graph
+
+\item \textbf{Shortest Paths:} Choosing $P(r, t)$ to contain only the shortest paths from $r$ to $t$ can prove a useful and simple measure of importance in networks. However for some graphs, such as Web Page Graphs, this metric fails to capture the true importance of nodes in a network. Much research in defining the importance or centrality of nodes in a social network graphs use shortest paths as the measure for importance
+
+\item \textbf{K-Short Paths:} Choosing $P(r,t)$ to contain all $k-short paths$ can address some of the shortcommings of using Shortest Paths (assuming a large enough value of $K$). This is because incorporating paths other than the shortest paths is more likely to include paths that are important to take into account. The major drawback of this method is that they do not take into account "capacity constaints" or bottlenecks in graphs. This can lead to double counting importance that is conferred onto a node because nodes and edges may appear multiple times in similarly length paths.
+
+\item \textbf{K-Short Node-Disjoint Paths:} If we choose $P$ to contain all $k-short paths$ that are node-disjoint, we avoid the problem of double counting node and edge importance. This approach is described by the paper to give good aproximations of the relative importance of a node with only having to examine a small set of paths. Since $\lambda$ decreases fairly rapidly as $K$ increases, choosing a relatively small value for $K$ in order to avoid the computational expense of examining longer paths is fine and still gives a good aproximation. The paper describes using a heuristic based bread-first search in order to find a good set of paths $P$. 
+\end{itemize}
+
+\item Aside on Markov Chains, Stochastic Processes, and Random Variables
+\begin{itemize}
+\item A stochastic process is a sequence of random variables indexed by some set that can be either discrete (e.x. the natural numbers) or continuous (e.x. time).
+
+\item A Markov chain is a discrete-time stochastic process where the outcome of the current state is only dependent on the outcome of the previous state.
+
+\item More formally, given a discrete-time stochastic process $X_n = \{X_1, X_2, ...\}$, the process is a markov chain if it exhibits the conditional probability property $P(X_{i+1} | X_1, X_2, \cdots
+, X_i) = P(X_{i+1} | X_i)$ for all $X_i \in X_n$. In other words, if the probability of transitioning to state $X_{i+1}$ given states $X_1, \cdots, X_i$ is equal to the probability of transitioning to state $X_{i+1}$ given only state $X_i$. This is also called the "memoryless" property. It should be noted that this is specifically a first order markov chain, if future states dependended on more variables in the current state, then they would be higher order markov chains.
+
+\item Markov chains can be represented using transition diagrams (graph/automata) or with transition matrices. A transition matrix details the probabilities of the state changes.
+
+\item Given transition matrix $T$, the transition matrix at future time $t$ is $T^t$.
+
+\item An initial distribution is a vector which denotes the distribution of elements that are in each state of the chain at the beginning. We can multiply this vector by the transition matrix to get the distribution among the states at the next time interval
+
+\item A stationary distribution is a distribution vector such that the distribution remains unchanged when acted upon by the transition matrix. Formally it is some vector $x$ such that given transition matrix $T$ we have $xT = x$. In other words, over the long run the proportion of time the chain spends in state $j$ given stationary distribution vector $x$ is approximately $x_j$.
+
+\end{itemize}
+
+\item Computing Relative Importance Using Markon Chains
+\begin{itemize}
+\item We can view graphs as being a stochastic process/first order Markov chain. A "token" moves around the chain in a stochastic manner as given by some transition matrix that is a function of only the properties of the current node the token is at (memorylessness). This approach is one that PageRank uses for modelling the importance of web links. Here we define the importance of a node in the graph as the amount of time the token spends in that node while traversing the graph - in other words the stationary distribution for that node
+
+\item Here we choose the probability of moving to node $i$ given that we are at node $j$ is $P(i|j) = \frac{1}{d_{out}(j)}$ if $j$ has an outgoing edge to $i$ and $0$ otherwise. Other notions for transition probabilities can be chosen on different criteria
+
+\item I'm going to summarize the Markov Chain algorithms at a higher level because it would take too long to go through the math to fully comprehend them.
+
+\item We can rank importance by using Markov Centrality. MC uses the mean first passage time (the time it takes for to reach node t starting at node r). Nodes that are more central are reached faster than other nodes.
+
+\item PageRank can be extended with a back probability value that defines the probability at any time that the Markov Chain will transition back to the root set $R$. At a high level, this method describes an internet surfer that starts in the root set $R$, does a stochastic walk throughout the graph, and ends the walk by going back to the root set $R$.
+
+\item HIITS with priors describes another random surfer that starts at a random node in the graph and tosses a biased coin at each time step, following in-links or out-links depending on the outcome of the coin toss as well as if the current time interval is even or odd occasionally going back to the root set $R$ as well.
+
+\item K-step Markov approach seems to take the same approach as PageRank with priors but bounds the random walk to be within $k$ steps.
+
+\end{itemize}
 \end{itemize}
 
 
