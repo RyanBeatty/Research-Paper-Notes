@@ -1,6 +1,12 @@
 \documentclass[a4paper]{article}
 
 %% Language and font encodings
+\usepackage{fancyvrb}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily,
+  mathescape
+}
 \usepackage[english]{babel}
 \usepackage[utf8x]{inputenc}
 \usepackage[T1]{fontenc}
@@ -1041,7 +1047,7 @@ Chubby is a lock service that allows distributed processes to synchronize their 
 \end{itemize}
 
 
-\section{Graphs and Link Analysis}
+\section{Graphs}
 
 \subsection{Algorithms for Estimating Relative Importance in Networks}
 
@@ -1117,6 +1123,99 @@ Formalizes a way to answer the query "How important is a node in a graph relativ
 
 \end{itemize}
 \end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{An $O(\log n)$ Parallel Connectivity Algorithm}
+
+By Yossi Shiloach and Uzi Vishkin
+
+Proposes a parallel algorithm to find the connected components of an undirected graph with $n$ vertices and $m$ edges in $O(\log n)$ with $O(n + m)$ number of processors. An assumption is made that the processors have access to shared memory and simultaneous read write access to this memory is allowed
+
+\begin{itemize}
+\item Introduction
+\begin{itemize}
+\item Shared memory system where simultaneous reads and writes may occur. In the case of writes, we don't know who won
+
+\item Proposed algorithm has depth (critical path length) of $O(\log n)$ using $n + 2m$ processors where $n = |V|$ and $m = |E|$
+\end{itemize}
+
+\item Algorithm Operations
+\begin{itemize}
+\item Each vertex $v$ has a field denoted $D(v)$ which "points" to another vertex in the graph or to $v$ itself as a directed edge. The set of verticies $V$ and the set of all pointer edges can be regarded as an auxiliary graph (called the "pointers graph"). 
+
+\item The pointers graph changes over the course of the algorithm, but will always remain a forest of rooted trees (with self loops only occurring in the roots of the trees). The number of trees always decreases as the algorithm continues, while individual trees are growing or shrinking via a "hooking" operation where one tree is attached to another. The second primitive operation the algorithm uses is a function to collapse vertices towards the root of its tree.
+
+\item When the algorithm completes, the pointers graph of all of the connected components form a rooted start. Therefore, connectivity queries can be answered in constant time
+
+\item The two primitive operations are:
+\begin{enumerate}
+\item The \textbf{short cut operation}: Given $v \in V$, let $D(v) = D(D(v))$. This operation never introduces directed cycles if ones did not already exist
+
+\item The \textbf{hooking} operation: Let $P = (V, D)$ be the pointers graph with trees $T_1,\cdots,T_k$ and $k > 2$. Let $r_i$ be the root of $T_i$. The operation  $D(r_i) = v$ where $v \in T_j$ and $j \neq i$. is called \textbf{hooking} $T_i$ on $T_j$. 
+\end{enumerate}
+
+\end{itemize}
+
+\item Informal Description of Algorithm
+\begin{itemize}
+\item Assume that the vertices of the graph can be enumerated like so $V = \{1, \cdots, n\}$. 
+
+\item $D_s(i) = j$ means that vertex $i$ points to vertex $j$ in the pointers graph after iteration $s$ of the algorithm. Initially $D_0(i) = i \forall i < V$.
+
+\item \textbf{Step 1 - Collapsing:} $D_s(i) = D_{s-1}(D_{s-1}(i))$
+
+\item \textbf{Step 2 - Hooking trees on smaller vertices of other trees:} After \textbf{Step 1}, all vertices that point to a root in the pointers graph determine if any of their neighbors (in the regular graph) point to a smaller vertex than itself. If such a neighbor $j$ exists, the vertex tries to hook its tree on $D_s(j)$. During this step simultaneous writing at the same location will occur (because many vertices of a tree might be trying to hook its root onto $D_s(j)$ for different values of $j$), but in the end one will succeed. Formally: If $D_s(i) = D_{s-1}(i)$ for some vertex $i$ and if $\exists j$ such that $D_s(j) < D_s(i)$, then $D_s(D_s(i)) = D_s(j)$.
+
+\item A stagnated tree is a tree that has not been changed during \textbf{step 1} and \textbf{step 2} of the algorithm. A root of a stagnated tree is called a \textbf{stagnated root}
+
+\item \textbf{Step 3 - Hooking stagnated trees:} All vertices that point on a stagnated root check if their neighbors (in the non pointers graph) point to a vertex of another tree. If such a vertex $j$ exists, it tries to hook its tree on $D_s(j)$ (note that simultaneous writing once again occurs here)
+
+\item \textbf{Step 4 - Second Collapsing:} $D_s(i) = D_s(D_s(i))$ (we are still on iteration $s$ here)
+\end{itemize}
+
+\item Detailed Description of Algorithm
+\begin{itemize}
+\item Let vertices of graph are enumerated by natural number: $V = \{1, \ldots, n\}$.
+
+\item Let the set of edges $E$ be a symmetric set of ordered pairs of vertices. Formally: $E = \{ (i, j) | i, j \in V \}$ where $(i, j) \in E$ implies $(j, i) \in E$, meaning $|E| = 2m$ where $m$ is the number of unique edges in the graph.
+
+\item There are $P_1, \ldots, P_{n+2m}$ processors (one for each node and edge) 
+
+\item Let $Q$ be an auxiliary vector of length $n$ which satisfies:
+\begin{enumerate}
+\item $Q(i) = s$ if after \textbf{Step 2 - Hooking}  of the $s-th$ iteration of the algorithm there exists at least one vertex $j$ pointing on $i$ that did not point on $i$ after the $s-1th$ iteration
+
+\item $Q(i) < s$ otherwise
+\end{enumerate}
+
+\item \textbf{Step 0 - Initialization:} Processors are allocated to vertices and edges as follows - if $i \leq n$, then $P_i$ is allocated to vertex $i$, else if $i > n$, then $P_i$ is allocated to ordered pair $E(i) = (i_1, i_2)$ and is denoted as $P_{i_1i_2}$. Then all vertex processors set the following $D_o(i) = i$, $Q(i) = 0$, $s = 1$, $s' = 1$ where $i \leq n$.
+
+\begin{lstlisting}
+While $ s == s'$ do
+Step 1: 
+  if $i \leq n$	 (If P is vertex processor)
+  then $D_s(i) = D_{s-1}(D_{s-1}(i))$ (collapsing)
+    if $D_s(i) \neq D_{s-1}(i)$ (Only equal if $D_{s-1}(i)$ points to a root) 
+    then $Q_s(D_s(i)) = s$ (Update Q)
+    
+Step 2:
+  if $i > n$ ($P_{i_1i_2}$ is an edge processor)
+  then if $D_s(i_1) == D_{s-1}(i_1)$ (Points to a root)
+    then if $D_s(i_2) < D_s(i_1)$ (Neighbor of $i_1$ points to smaller vertex)
+      then $D_s(D_s(i_1)) = D_s(i_2)$ (Try to hook root of $i_1$)
+      $Q(D_s(D_s(i_1))) = s$ (Need to update Q)
+         
+\end{lstlisting} 
+
+\end{itemize}
+
+\end{itemize}
+
+
+
+
+
 
 
 
