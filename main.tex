@@ -1172,6 +1172,7 @@ Proposes a parallel algorithm to find the connected components of an undirected 
 \item \textbf{Step 3 - Hooking stagnated trees:} All vertices that point on a stagnated root check if their neighbors (in the non pointers graph) point to a vertex of another tree. If such a vertex $j$ exists, it tries to hook its tree on $D_s(j)$ (note that simultaneous writing once again occurs here)
 
 \item \textbf{Step 4 - Second Collapsing:} $D_s(i) = D_s(D_s(i))$ (we are still on iteration $s$ here)
+ 
 \end{itemize}
 
 \item Detailed Description of Algorithm
@@ -1189,9 +1190,12 @@ Proposes a parallel algorithm to find the connected components of an undirected 
 \item $Q(i) < s$ otherwise
 \end{enumerate}
 
+\item The output of the algorithm is the vector $[D_{s_0}(1),\ldots,D_{s_0}(n)]$
+
 \item \textbf{Step 0 - Initialization:} Processors are allocated to vertices and edges as follows - if $i \leq n$, then $P_i$ is allocated to vertex $i$, else if $i > n$, then $P_i$ is allocated to ordered pair $E(i) = (i_1, i_2)$ and is denoted as $P_{i_1i_2}$. Then all vertex processors set the following $D_o(i) = i$, $Q(i) = 0$, $s = 1$, $s' = 1$ where $i \leq n$.
 
 \begin{lstlisting}
+Note: Each processor runs this while loop.
 While $ s == s'$ do
 Step 1: 
   if $i \leq n$	 (If P is vertex processor)
@@ -1205,8 +1209,63 @@ Step 2:
     then if $D_s(i_2) < D_s(i_1)$ (Neighbor of $i_1$ points to smaller vertex)
       then $D_s(D_s(i_1)) = D_s(i_2)$ (Try to hook root of $i_1$)
       $Q(D_s(D_s(i_1))) = s$ (Need to update Q)
+    
+Step 3:
+  if $i > n$
+  then if $D_s(i_1) == D_s(D_s(i_1))$ and $Q(D_s(i_1)) < s$ (point on stagnant root)
+    then if $D_s(i_1) \neq D_s(i_2)$ (neighbor points to different tree)
+      then $D_s(D_s(i_1)) = D_s(i_2)$
+      
+Step 4:
+  if $ i \leq n$
+  then $D_s(i) = D_s(D_s(i))$ (second collapsing)
+  
+Step 5:
+  $s = s + 1$
+  if $i \leq n$ and $Q(i) == s$ (if vertex is not stagnant)
+  then $s' = s' + 1$
          
 \end{lstlisting} 
+
+\item Notice that one of the reasons we need a processor for both edge ordered pairs $(i, j)$ and $(j, i)$ is so that both directions of the edges will be checked in steps 2 and 3 above
+
+\item Also notice that for the hooking steps (2 and 3), multiple processors for vertices pointing to the same root will be trying to simultaneously hook the root on different trees. One wins, and we don't care which
+
+\item As soon as all trees are stagnated, the algorithm will terminate
+
+\item Synchronization is required before each line of the program
+
+\end{itemize}
+
+\item Proof of Correctness
+\begin{itemize}
+\item Main Theorems
+\begin{enumerate}
+\item The algorithm terminates after $s_0 \leq floor(\log_{\frac{3}{2}} n) + 2$ iterations
+
+\item $D_{s_0}(i) == D_{s_0}(j)$ iff $i$ and $j$ belong to the same connected component
+\end{enumerate}
+
+\item Let $R$ be a pointers graph
+
+\item \textbf{Lemma 3.1:} If there exists a directed simple path from $u$ to $v$ in $R$, then it is unique. \textbf{Proof:} Since the out-degree of each vertex is 1, any path between two vertices is unique.
+
+\item Definitions
+\begin{enumerate}
+\item If there exists a path from $u$ to $v$ in $R$, then $d_R(u, v)$ denotes the number of edges (distance) in the path.
+
+\item The height of $v$ in $R$, denoted $h_R(v)$, is $max(\{ d_R(u, v) | v is reachable from u in R \})$
+
+\item The cardinality of $v$ in $R$, denoted $c_R(v)$, is $|\{u | v is reachable from u in R \}|$
+
+\item A vertex is a leaf in $R$ if its in-degree is zero
+
+\item Let $R_{s, k}$ be the pointers graph \textbf{after} the k-th step of its s-th iteration ($k = 1,\ldots, 5$)
+\end{enumerate} 
+
+\item \textbf{Lemma 3.2:} If vertex $i$ is a leaf in $R_{s_0, k_0}$ for some $s_0, k_0$, then it remains a leaf in $R_{s,k}$ for all $(s, k)$ that follow $(s_0, k_0)$ in the lexicographic order. \textbf{Proof:} Following the algorithm it is easy to verify that if we hook vertex $i$ onto vertex $j$ then $j$ was not a leaf at the end of the preceeding step. \textbf{Note:} I haven't figured out what this lemma is really saying nor why this proof satisfies the lemma
+
+\item If a vertex $i$ is a stagnated root after the second step of the $s-th$ iteration, then $h_{R_{s, 2}}(i) \leq 1$ and $h_{R_{s, 3}}(i) \leq 1$. \textbf{Proof:} 
 
 \end{itemize}
 
