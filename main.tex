@@ -1161,7 +1161,7 @@ Proposes a parallel algorithm to find the connected components of an undirected 
 \begin{itemize}
 \item Assume that the vertices of the graph can be enumerated like so $V = \{1, \cdots, n\}$. 
 
-\item $D_s(i) = j$ means that vertex $i$ points to vertex $j$ in the pointers graph after iteration $s$ of the algorithm. Initially $D_0(i) = i \forall i < V$.
+\item $D_s(i) = j$ means that vertex $i$ points to vertex $j$ in the pointers graph after iteration $s$ of the algorithm. Initially $D_0(i) = i$, $\forall i < V$.
 
 \item \textbf{Step 1 - Collapsing:} $D_s(i) = D_{s-1}(D_{s-1}(i))$
 
@@ -1177,7 +1177,7 @@ Proposes a parallel algorithm to find the connected components of an undirected 
 
 \item Detailed Description of Algorithm
 \begin{itemize}
-\item Let vertices of graph are enumerated by natural number: $V = \{1, \ldots, n\}$.
+\item Let the vertices of the graph be enumerated by natural numbers: $V = \{1, \ldots, n\}$.
 
 \item Let the set of edges $E$ be a symmetric set of ordered pairs of vertices. Formally: $E = \{ (i, j) | i, j \in V \}$ where $(i, j) \in E$ implies $(j, i) \in E$, meaning $|E| = 2m$ where $m$ is the number of unique edges in the graph.
 
@@ -1201,7 +1201,7 @@ Step 1:
   if $i \leq n$	 (If P is vertex processor)
   then $D_s(i) = D_{s-1}(D_{s-1}(i))$ (collapsing)
     if $D_s(i) \neq D_{s-1}(i)$ (Only equal if $D_{s-1}(i)$ points to a root) 
-    then $Q_s(D_s(i)) = s$ (Update Q)
+    then $Q(D_s(i)) = s$ (Update Q)
     
 Step 2:
   if $i > n$ ($P_{i_1i_2}$ is an edge processor)
@@ -1226,6 +1226,8 @@ Step 5:
   then $s' = s' + 1$
          
 \end{lstlisting} 
+
+\item Note that the algorithm is somewhat confusing in regards to when edge processors terminate. Notice that the initialization phase only causes vertex processors to set $s'$ and $s$ at all, my guess is that edge processors continue to execute until all trees are stagnant?
 
 \item Notice that one of the reasons we need a processor for both edge ordered pairs $(i, j)$ and $(j, i)$ is so that both directions of the edges will be checked in steps 2 and 3 above
 
@@ -1263,9 +1265,31 @@ Step 5:
 \item Let $R_{s, k}$ be the pointers graph \textbf{after} the k-th step of its s-th iteration ($k = 1,\ldots, 5$)
 \end{enumerate} 
 
-\item \textbf{Lemma 3.2:} If vertex $i$ is a leaf in $R_{s_0, k_0}$ for some $s_0, k_0$, then it remains a leaf in $R_{s,k}$ for all $(s, k)$ that follow $(s_0, k_0)$ in the lexicographic order. \textbf{Proof:} Following the algorithm it is easy to verify that if we hook vertex $i$ onto vertex $j$ then $j$ was not a leaf at the end of the preceeding step. \textbf{Note:} I haven't figured out what this lemma is really saying nor why this proof satisfies the lemma
+\item \textbf{Lemma 3.2:} If vertex $i$ is a leaf in $R_{s_0, k_0}$ for some $s_0, k_0$, then it remains a leaf in $R_{s,k}$ for all $(s, k)$ that follow $(s_0, k_0)$ in the lexicographic order. \textbf{Proof:} Following the algorithm it is easy to verify that if we hook vertex $i$ onto vertex $j$ then $j$ was not a leaf at the end of the preceeding step. Note that this is because the only hooking steps (2 and 3) never hook a vertex onto a leaf node (this is because it always tries to hook a root of a tree onto a vertex that is already pointed to by something (i.e. the pointed to vertexes' in-degree is non-zero)).
 
-\item If a vertex $i$ is a stagnated root after the second step of the $s-th$ iteration, then $h_{R_{s, 2}}(i) \leq 1$ and $h_{R_{s, 3}}(i) \leq 1$. \textbf{Proof:} 
+\item \textbf{Lemme 3.3:} If a vertex $i$ is a stagnated root after the second step of the $s-th$ iteration, then $h_{R_{s, 2}}(i) \leq 1$ and $h_{R_{s, 3}}(i) \leq 1$. \textbf{Proof:} Assume $i$ is a stagnated root in $R_{s, 2}$. If $h_{R_{s, 1}}(i) > 1$, then Step 1 added new children to $i$, so by definition it is not stagnated; therefore, $i$ being a stagnated root implies $h_{R_{s, 1}} \leq 1$. If $h_{R_{s, 2}} > 1$, this means that another vertex root was hooked onto it in Step 2. However, by definition, $i$ being a stagnated root requires that it has no new vertices hooked directly on it. Furthermore, Since $h_{R_{s, 1}} \leq 1$, $i$'s sons are leaves and Hooking Steps never hook vertices onto leaves, so we don't need to worry about height increases to $i$'s children effecting the height of $i$ itself in Step 2. Thus $h_{R_{s, 2}} \leq 1$. For Step 3, only hooking another (stagnated) vertex root directly on $i$ can effect its height (Remember that $h_{R_{s, 2}} \leq$ means that all $i$'s children are leaves and hooking steps never increase leaf heights). \textbf{Lemma 3.4} shows this to be impossible. Thus $h_{R_{s, 3}} \leq 1$.
+
+\item \textbf{Lemma 3.4:} If $D_s(i)$ and $D_s(j)$ are different stagnated roots after Step 2,  then $i$ and $j$ are not connected by an edge in $G$. \textbf{Proof:} Assume by contradiction that $D_s(i)$ and $D_s(j)$ are different stagnated roots after Step 2 and are connected by edge $(i, j)$ in $G$. Assume $D_s(j) < D_s(i)$. This is a contradiction since processor $P_{ij}$ would try to hook $D_s(i)$ onto $D_s(j)$ in Step 2 meaning that $D_s(j)$ would no longer be a stagnated root.
+
+\item \textbf{Lemma 3.5:} If $i < D_s(i)$ after Steps 1, 2, or 4, then $i$ is a leaf in $R_{s, 1}$, $R_{s, 2}$, and $R_{s, 4}$ respectively. \textbf{Proof By Induction on s:} The lemma obviously holds after Initialization. If after Step 1 of the $s-th$ iteration the lemma holds, then it is also true after Step 2 since we never hook vertices on leaf vertices or larger vertices. In Step 3 we might hook a vertex $i$ onto a larger one; however, $i$ is a stagnated root in this case and \textbf{Lemma 3.3} guarantees that $h_{R_{s, 3}}(i) \leq 1$. Therefore, after Step 4 of the $s-th$ iteration, $i$ will be a leaf.
+
+\item \textbf{Lemma 3.6:} $R_{s, k}$ is a forest of rooted trees with self-loops in their roots for all $s$ and $k$. \textbf{Proof By Induction on s:} The lemma is obviously true after initialization. Steps 1 and 4 never introduce directed cycles if there weren't any already, so we must prove this cannot happen in Step 2 and Step 3 as well. Assume by contradiction that a directed cycle is formed after Step 2. Let $j$ be the largest vertex in the cycle and let $i$ be the vertex that points on $j$. \textbf{Lemma 3.5} guarantees that $i$ must be a leaf node in this case which is a contradiction, so Step 2 cannot introduce cycles. \textbf{Lemma 3.4} guarantees that no cycles will form after Step 3 since we only hook stagnated roots onto non stagnated vertexes which are not further hooked in this step.
+
+\item The following two lemmas prove correctness of the output of the algorithm (part b of the main theorem)
+
+\item \textbf{Lemma 3.7:} Let $v$ be a stagnated root after Step 2 of the $s-th$ iteration, and assume that $v$ is still a root after the $s-th$ iteration, then all of the vertices in $v$'s connected component are pointing on $v$. \textbf{Proof:} Assume that $v$ is a stagnated root after Step 2 of the $s-th$ iteration and that $v$ is a root at the end of the iteration. By \textbf{Lemma 3.3} we have $h_{R_{s, 2}}(v) \leq 1$. 
+
+\item \textbf{Lemma 3.8:} If $D_s(v) = u$ for some iteration $s$, then the vertices $u$ and $v$ are in the same connected component of $G$. \textbf{Proof:} This is easy to observe since a vertex will only ever point to a different vertex if it hooks itself on another vertex (which only happens if the two vertices have edges between each other). 
+
+\item \textbf{Lemma 3.9:} If a tree $T$ in the pointers graph has not been changed during an entire iteration, then it remains unchanged until the end. \textbf{Proof:} Assume that tree $T$ has not been changed during the $s-th$ iteration. This means that its root was stagnated after Step 2 and it was not hooked onto another vertex because all of its vertices in its connected component had already pointed on it. Such a tree will obviously no longer change during the algorithm
+
+\item \textbf{Lemma 3.10:} Let $v_1,\ldots, v_r$ be roots of trees and with respective heights $h_1,\ldots, h_r$. If the trees are merged into one tree after Step 2 or 3 then the resulting trees height is at most $h_1 + \cdots + h_r$. \textbf{Proof:} Since we never hook a vertex onto a leaf vertex of another tree, the worst height we can have is obviously the one where each rooted vertex is hooked daisy chain style on one another.
+
+\item \textbf{Definition:} A root $v$ satisfies the property $w(s)$ at a given time if $c_R(v) \geq (\frac{3}{2})^{s-1}h_R(v)$ at that time.
+
+\item \textbf{Lemma 3.11:} If a tree is a start after Step 3 of an iteration then it has also been so after the first step of the iteration. \textbf{Proof:} This is true since hooking never results in a star.
+
+\item \textbf{Lemma 3.12:} If $v$ is a root at the end of the $s-th$ iteration and was a root  of a different tree at the end of the $s-th - 1$ iteration, then it satisfies $w(s)$ at the end of the $s-th$ iteration. \textbf{Proof:} 
 
 \end{itemize}
 
